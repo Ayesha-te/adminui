@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nexocart Admin Panel</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">N</div>
+      <div>
+        <h1>Nexocart</h1>
+        <p>Admin Panel</p>
+      </div>
+    </div>
+    <nav>
+      <button class="nav-btn" data-section="dashboard">Dashboard</button>
+      <button class="nav-btn" data-section="users">Users</button>
+      <button class="nav-btn" data-section="deposits">Deposits</button>
+      <button class="nav-btn" data-section="withdrawals">Withdrawals</button>
+      <button class="nav-btn" data-section="referrals">Referrals</button>
+      <button class="nav-btn" data-section="proofs">Signup Proofs</button>
+      <div class="spacer"></div>
+      <div class="config">
+        <label>Admin Login</label>
+        <input id="loginUsername" placeholder="Username or Email" />
+        <input id="loginPassword" type="password" placeholder="Password" />
+        <div class="row">
+          <button id="loginBtn" class="btn">Login</button>
+          <button id="logoutBtn" class="btn secondary">Logout</button>
+        </div>
+        <small id="authHint" class="muted">Uses JWT; tokens kept in-memory.</small>
+      </div>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <header class="toolbar">
+      <h2 id="sectionTitle">Dashboard</h2>
+      <div id="status" class="status"></div>
+    </header>
+
+    <section id="dashboard" class="section active">
+      <div class="cards">
+        <div class="card">
+          <h3>Total Pending Users</h3>
+          <div id="statPendingUsers" class="stat">—</div>
+        </div>
+        <div class="card">
+          <h3>Pending Deposits</h3>
+          <div id="statPendingDeposits" class="stat">—</div>
+        </div>
+        <div class="card">
+          <h3>Pending Withdrawals</h3>
+          <div id="statPendingWithdrawals" class="stat">—</div>
+        </div>
+        <div class="card">
+          <h3>Total Referrals</h3>
+          <div id="statTotalReferrals" class="stat">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="users" class="section">
+      <div class="section-head">
+        <h3>Users</h3>
+        <div class="actions">
+          <button id="refreshUsers" class="btn">Refresh</button>
+        </div>
+      </div>
+      <div class="filters">
+        <input id="usersSearch" placeholder="Search username or email" />
+        <select id="usersApproved">
+          <option value="true" selected>Approved</option>
+          <option value="">All</option>
+          <option value="false">Not Approved</option>
+        </select>
+        <button id="applyUsersFilter" class="btn">Apply</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="username">Username</th>
+              <th data-sort="email">Email</th>
+              <th>First</th>
+              <th>Last</th>
+              <th data-sort="is_active">Active</th>
+              <th data-sort="is_staff">Staff</th>
+              <th data-sort="is_approved">Approved</th>
+              <th data-sort="rewards_usd">Rewards (USD)</th>
+              <th data-sort="referrals_count">Referrals</th>
+              <th>Bank</th>
+              <th>Account</th>
+              <th data-sort="date_joined">Joined</th>
+              <th data-sort="last_login">Last Login</th>
+            </tr>
+          </thead>
+          <tbody id="usersTbody">
+            <tr><td colspan="12" class="muted">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="filters row">
+        <input id="usersSearch2" placeholder="Search username or email" />
+        <select id="usersApproved2">
+          <option value="">Approved: All</option>
+          <option value="true">Approved</option>
+          <option value="false">Not Approved</option>
+        </select>
+        <select id="usersActive">
+          <option value="">Active: All</option>
+          <option value="true">Active</option>
+          <option value="false">Inactive</option>
+        </select>
+        <select id="usersStaff">
+          <option value="">Staff: All</option>
+          <option value="true">Staff</option>
+          <option value="false">Non-staff</option>
+        </select>
+        <input id="dateJoinedFrom" type="date" />
+        <input id="dateJoinedTo" type="date" />
+        <button id="applyUsersFilter2" class="btn">Apply</button>
+      </div>
+      <div class="pagination">
+        <button id="usersPrev" class="btn">Prev</button>
+        <span id="usersPageInfo" class="muted"></span>
+        <button id="usersNext" class="btn">Next</button>
+      </div>
+
+      <h4 class="subheading">Pending Approval</h4>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>User Name</th>
+              <th>Email</th>
+              <th>Signup Tx ID</th>
+              <th>Signup Proof</th>
+              <th>Submitted At</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="pendingUsersTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="deposits" class="section">
+      <div class="section-head">
+        <h3>Pending Deposits</h3>
+        <div class="actions">
+          <button id="refreshDeposits" class="btn">Refresh</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>User</th>
+              <th>Email</th>
+              <th>Tx ID</th>
+              <th>Bank</th>
+              <th>Account</th>
+              <th>Proof</th>
+              <th>Amount (USD)</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="depositsTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="withdrawals" class="section">
+      <div class="section-head">
+        <h3>Pending Withdrawals</h3>
+        <div class="actions">
+          <button id="refreshWithdrawals" class="btn">Refresh</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>User</th>
+              <th>Email</th>
+              <th>Tx ID</th>
+              <th>Bank Name</th>
+              <th>Account Name</th>
+              <th>Amount (USD)</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="withdrawalsTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="referrals" class="section">
+      <div class="section-head">
+        <h3>Referrals Summary</h3>
+        <div class="actions">
+          <button id="refreshReferrals" class="btn">Refresh</button>
+        </div>
+      </div>
+      <div class="cards" id="referralSummaryCards"></div>
+    </section>
+
+    <section id="proofs" class="section">
+      <div class="section-head">
+        <h3>Signup Proofs (Pending)</h3>
+        <div class="actions">
+          <button id="refreshProofs" class="btn">Refresh</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>User</th>
+              <th>Email</th>
+              <th>File</th>
+              <th>Uploaded</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="proofsTbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
