@@ -1,11 +1,20 @@
 (function(){
   const $ = (sel, root=document) => root.querySelector(sel);
   const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
-  // Determine API base. Priority: localStorage -> ?apiBase= -> environment (localhost for dev) -> production URL
-  const defaultApiBase =
+  // Determine and normalize API base. Priority: localStorage -> ?apiBase= -> same-origin /api
+  function normalizeApiBase(v){
+    if(!v) return '';
+    let base = String(v).trim();
+    base = base.replace(/\/+$/,'');
+    // If it doesn't include '/api' segment, append it
+    if(!/\/api$/.test(base)) base = base + '/api';
+    return base;
+  }
+  const defaultApiBaseRaw =
     (typeof localStorage !== 'undefined' && localStorage.getItem('adminApiBase')) ||
     new URLSearchParams(location.search).get('apiBase') ||
-    'https://ref-backend-8arb.onrender.com/api';
+    new URL('/api', location.origin).toString().replace(/\/$/, '');
+  const defaultApiBase = normalizeApiBase(defaultApiBaseRaw);
   const state = { apiBase: defaultApiBase, access: null, refresh: null };
 
   const toast = (msg) => {
@@ -14,6 +23,39 @@
     el.style.display = 'block';
     setTimeout(()=>{ el.style.display = 'none'; }, 2000);
   };
+
+  // Render current API base (no longer shown in UI)
+  function showApiBase(){}
+
+  async function detectApiBase(){
+    // Try common candidates relative to current host, plus Render-hosted backend
+    const explicit = 'https://ref-backend-8arb.onrender.com/api';
+    const candidates = [
+      explicit,
+      new URL('/api', location.origin).toString().replace(/\/$/, ''),
+      location.origin.replace(/:\d+$/, '') + ':8000/api',
+      location.origin.replace(/:\d+$/, '') + ':3002/api'
+    ];
+    for(const base of candidates){
+      try{
+        const r = await fetch(`${base}/auth/token/`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username:'__probe__', password:'__probe__' })
+        });
+        // 400/401 are acceptable -> endpoint exists
+        if([400,401].includes(r.status)){
+          return base;
+        }
+      }catch(_){ /* ignore */ }
+    }
+    return candidates[0];
+  }
+
+  // Initialize API base automatically without UI controls
+  (async ()=>{
+    const base = normalizeApiBase(await detectApiBase());
+    try{ localStorage.setItem('adminApiBase', base); }catch(_){ }
+    state.apiBase = base; showApiBase();
+  })();
 
   const setStatus = (msg) => $('#status').textContent = msg || '';
 
@@ -61,6 +103,30 @@
     return res.json().catch(()=>({ ok:true }));
   };
 
+  const patch = async (url, body) => {
+    setStatus('Working...');
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'omit',
+      body: JSON.stringify(body||{})
+    });
+    setStatus('');
+    if (res.status === 401 && state.refresh) {
+      await refreshToken();
+      const retry = await fetch(url, {
+        method: 'PATCH',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        credentials: 'omit',
+        body: JSON.stringify(body||{})
+      });
+      if(!retry.ok) throw new Error(await retry.text());
+      return retry.json().catch(()=>({ ok:true }));
+    }
+    if (!res.ok) throw new Error(await res.text());
+    return res.json().catch(()=>({ ok:true }));
+  };
+
   async function login(username, password){
     const res = await fetch(`${state.apiBase}/auth/token/`, {
       method: 'POST',
@@ -96,13 +162,16 @@
       $('#sectionTitle').textContent = btn.textContent; // fix: use single element selector
       $$('.section').forEach(s => s.classList.remove('active'));
       $('#'+id).classList.add('active');
-      // Auto-load when switching sections
+      // Auto-load when switching sections (only if logged in when admin endpoints)
       if(id==='users'){ loadUsers(); }
       if(id==='dashboard'){ loadDashboard(); }
-      if(id==='deposits'){ loadDeposits(); }
-      if(id==='withdrawals'){ loadWithdrawals(); }
-      if(id==='referrals'){ loadReferrals(); }
-      if(id==='proofs'){ loadProofs(); }
+      if(id==='deposits'){ if(state.access) loadDeposits(); else setStatus('Login required'); }
+      if(id==='withdrawals'){ if(state.access) loadWithdrawals(); else setStatus('Login required'); }
+      if(id==='referrals'){ if(state.access) loadReferrals(); else setStatus('Login required'); }
+      if(id==='proofs'){ if(state.access) loadProofs(); else setStatus('Login required'); }
+      if(id==='system'){ if(state.access) loadSystem(); else setStatus('Login required'); }
+      if(id==='globalpool'){ if(state.access) loadGlobalPool(); else setStatus('Login required'); }
+      if(id==='products'){ if(state.access) loadProducts(); else setStatus('Login required'); }
     });
   });
 
@@ -114,7 +183,7 @@
       if(!u||!p){ toast('Enter username and password'); return; }
       await login(u,p);
       // On login, refresh all sections
-      loadDashboard(); loadUsers(); loadPendingUsers(); loadDeposits(); loadWithdrawals(); loadReferrals(); loadProofs();
+      loadDashboard(); loadUsers(); loadPendingUsers(); loadDeposits(); loadWithdrawals(); loadReferrals(); loadProofs(); loadProducts();
     }catch(e){ console.error(e); toast(String(e?.message || e || 'Login failed')); }
   });
   $('#logoutBtn').addEventListener('click', ()=>{ logout(); });
@@ -317,6 +386,64 @@
     }catch(err){ console.error(err); toast('Action failed'); }
   });
 
+  // Products
+  async function loadProducts(){
+    const tbody = $('#productsTbody');
+    if(!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="5" class="muted">Loading...</td></tr>';
+    try{
+      const rows = await get(`${state.apiBase}/marketplace/admin/products/`);
+      if(!rows.length){ tbody.innerHTML = '<tr><td colspan="5" class="muted">No products</td></tr>'; return; }
+      tbody.innerHTML = '';
+      rows.forEach(p=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(p.title)}</td>
+          <td>${Number(p.price_usd||0).toFixed(2)}</td>
+          <td>${escapeHtml(p.description||'')}</td>
+          <td>${p.is_active ? 'Yes' : 'No'}</td>
+          <td>
+            <button class="btn" data-action="toggle" data-id="${p.id}">${p.is_active?'Disable':'Enable'}</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }catch(e){ console.error(e); tbody.innerHTML = '<tr><td colspan="5" class="muted">Failed to load</td></tr>'; }
+  }
+
+  $('#addProductBtn')?.addEventListener('click', async (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    const btn = e.currentTarget;
+    if(btn.disabled) return;
+    btn.disabled = true;
+    try{
+      const title = ($('#newProductName')?.value||'').trim();
+      const price = Number($('#newProductPrice')?.value||'');
+      const description = ($('#newProductDesc')?.value||'').trim();
+      if(!title){ toast('Title is required'); return; }
+      if(!description){ toast('Description is required'); return; }
+      if(!(price>0)){ toast('Valid price (USD) is required'); return; }
+      await post(`${state.apiBase}/marketplace/admin/products/`, { title, price_usd: price, description });
+      toast('Product added');
+      $('#newProductName').value=''; $('#newProductPrice').value=''; $('#newProductDesc').value='';
+      await loadProducts();
+    }catch(e){ console.error(e); toast('Add failed'); }
+    finally{ btn.disabled = false; }
+  });
+
+  document.querySelector('#productsTbody')?.addEventListener('click', async (e)=>{
+    const btn = e.target.closest('button[data-action="toggle"]');
+    if(!btn) return;
+    btn.disabled = true;
+    try{
+      await patch(`${state.apiBase}/marketplace/admin/products/${btn.dataset.id}/toggle/`, {});
+      toast('Product status updated');
+      await loadProducts();
+    }catch(err){ console.error(err); toast('Toggle failed'); }
+    finally{ btn.disabled = false; }
+  });
+
   // Withdrawals
   async function loadWithdrawals(){
     const tbody = $('#withdrawalsTbody');
@@ -356,6 +483,28 @@
       await loadDashboard();
     }catch(err){ console.error(err); toast('Action failed'); }
   });
+
+  // System overview
+  async function loadSystem(){
+    const wrap = $('#systemContent');
+    if(!wrap) return;
+    wrap.innerHTML = '<div class="muted">Loading...</div>';
+    try{
+      const data = await get(`${state.apiBase}/earnings/admin/system-overview/`);
+      wrap.innerHTML = `
+        <div class="cards">
+          <div class="card"><h3>Passive Mode</h3><div class="stat">${String(data.PASSIVE_MODE)}</div></div>
+          <div class="card"><h3>User Wallet Share</h3><div class="stat">${Number(data.USER_WALLET_SHARE*100).toFixed(0)}%</div></div>
+          <div class="card"><h3>Withdraw Tax</h3><div class="stat">${Number(data.WITHDRAW_TAX*100).toFixed(0)}%</div></div>
+          <div class="card"><h3>Global Pool Cut</h3><div class="stat">${Number(data.GLOBAL_POOL_CUT*100).toFixed(0)}%</div></div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <h3>Referral Tiers</h3>
+          <pre style="white-space:pre-wrap">${escapeHtml(JSON.stringify(data.REFERRAL_TIERS, null, 2))}</pre>
+        </div>
+      `;
+    }catch(e){ console.error(e); wrap.innerHTML = '<div class="muted">Failed to load</div>'; }
+  }
 
   // Referrals summary
   async function loadReferrals(){
@@ -423,6 +572,25 @@
       .replaceAll('"','&quot;')
       .replaceAll("'",'&#39;');
   }
+
+  // Global Pool
+  async function loadGlobalPool(){
+    try{
+      const data = await get(`${state.apiBase}/earnings/admin/global-pool/`);
+      $('#globalPayoutDay').textContent = data.payout_day || 'Monday';
+      $('#globalPayoutAmount').textContent = data.last_payout?.amount_usd || '—';
+      const tbody = $('#globalPoolUsersTbody');
+      const rows = data.per_user_passive || [];
+      tbody.innerHTML = rows.length ? '' : '<tr><td colspan="2" class="muted">No data</td></tr>';
+      rows.forEach(r=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(r.username)}</td><td>${Number(r.total_passive_usd||0).toFixed(2)}</td>`;
+        tbody.appendChild(tr);
+      });
+    }catch(e){ console.error(e); toast('Failed to load global pool'); }
+  }
+
+
 
   // Bind refresh buttons
   $('#refreshUsers').addEventListener('click', loadPendingUsers);

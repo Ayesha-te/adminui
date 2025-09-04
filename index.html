@@ -22,6 +22,9 @@
       <button class="nav-btn" data-section="withdrawals">Withdrawals</button>
       <button class="nav-btn" data-section="referrals">Referrals</button>
       <button class="nav-btn" data-section="proofs">Signup Proofs</button>
+      <button class="nav-btn" data-section="system">System</button>
+      <button class="nav-btn" data-section="globalpool">Global Pool</button>
+      <button class="nav-btn" data-section="products">Products</button>
       <div class="spacer"></div>
       <div class="config">
         <label>Admin Login</label>
@@ -233,6 +236,57 @@
             </tr>
           </thead>
           <tbody id="proofsTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="system" class="section">
+      <div class="section-head">
+        <h3>System Overview</h3>
+      </div>
+      <div id="systemContent"></div>
+    </section>
+
+    <section id="globalpool" class="section">
+      <div class="section-head">
+        <h3>Global Pool</h3>
+      </div>
+      <div class="cards">
+        <div class="card">
+          <h3>Payout Day</h3>
+          <div id="globalPayoutDay" class="stat">—</div>
+        </div>
+        <div class="card">
+          <h3>Last Payout Amount</h3>
+          <div id="globalPayoutAmount" class="stat">—</div>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-top: 12px;">
+        <table>
+          <thead>
+            <tr><th>User</th><th>Total Passive (USD)</th></tr>
+          </thead>
+          <tbody id="globalPoolUsersTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="products" class="section">
+      <div class="section-head">
+        <h3>Products</h3>
+      </div>
+      <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:flex-start;">
+        <input id="newProductName" placeholder="Product name" style="min-width:200px;"/>
+        <input id="newProductPrice" type="number" step="0.01" placeholder="Price (USD)" style="width:140px;"/>
+        <input id="newProductDesc" placeholder="Description" style="min-width:280px;flex:1;"/>
+        <button id="addProductBtn" class="btn">Add</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Title</th><th>Price (USD)</th><th>Description</th><th>Active</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="productsTbody"></tbody>
         </table>
       </div>
     </section>
