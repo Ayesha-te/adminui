@@ -367,6 +367,7 @@
           <td>${escapeHtml(d.created_at || '-')}</td>
           <td>
             <button class="btn ok" data-action="approve" data-id="${d.id}">Approve</button>
+            <button class="btn" data-action="credit" data-id="${d.id}">Credit</button>
             <button class="btn secondary" data-action="reject" data-id="${d.id}">Reject</button>
           </td>
         `;
@@ -378,12 +379,13 @@
   $('#depositsTbody').addEventListener('click', async (e)=>{
     const btn = e.target.closest('button'); if(!btn) return; const id = btn.dataset.id;
     const action = btn.dataset.action;
-    try{
-      await post(`${state.apiBase}/wallets/admin/deposits/action/${id}/`, { action });
-      toast('Deposit updated');
-      await loadDeposits();
-      await loadDashboard();
-    }catch(err){ console.error(err); toast('Action failed'); }
+      try{
+        let backendAction = action === 'approve' ? 'APPROVE' : action === 'reject' ? 'REJECT' : action === 'credit' ? 'CREDIT' : action;
+        await post(`${state.apiBase}/wallets/admin/deposits/action/${id}/`, { action: backendAction });
+        toast('Deposit updated');
+        await loadDeposits();
+        await loadDashboard();
+      }catch(err){ console.error(err); toast('Action failed'); }
   });
 
   // Products
@@ -421,12 +423,26 @@
       const title = ($('#newProductName')?.value||'').trim();
       const price = Number($('#newProductPrice')?.value||'');
       const description = ($('#newProductDesc')?.value||'').trim();
+      const imageFile = $('#newProductImage')?.files?.[0] || null;
       if(!title){ toast('Title is required'); return; }
       if(!description){ toast('Description is required'); return; }
       if(!(price>0)){ toast('Valid price (USD) is required'); return; }
-      await post(`${state.apiBase}/marketplace/admin/products/`, { title, price_usd: price, description });
+      const fd = new FormData();
+      fd.append('title', title);
+      fd.append('price_usd', String(price));
+      fd.append('description', description);
+      if(imageFile){ fd.append('image', imageFile); }
+      setStatus('Working...');
+      const res = await fetch(`${state.apiBase}/marketplace/admin/products/`, {
+        method: 'POST',
+        headers: authHeaders(), // do NOT set Content-Type for FormData
+        body: fd,
+        credentials: 'omit'
+      });
+      setStatus('');
+      if(!res.ok){ throw new Error(await res.text()); }
       toast('Product added');
-      $('#newProductName').value=''; $('#newProductPrice').value=''; $('#newProductDesc').value='';
+      $('#newProductName').value=''; $('#newProductPrice').value=''; $('#newProductDesc').value=''; if($('#newProductImage')) $('#newProductImage').value='';
       await loadProducts();
     }catch(e){ console.error(e); toast('Add failed'); }
     finally{ btn.disabled = false; }
