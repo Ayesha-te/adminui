@@ -189,6 +189,7 @@
       if(id==='proofs'){ if(state.access) loadProofs(); else setStatus('Login required'); }
       if(id==='system'){ if(state.access) loadSystem(); else setStatus('Login required'); }
       if(id==='globalpool'){ if(state.access) loadGlobalPool(); else setStatus('Login required'); }
+      if(id==='systemoverview'){ if(state.access) loadSystemOverview(); else setStatus('Login required'); }
       if(id==='products'){ if(state.access) loadProducts(); else setStatus('Login required'); }
       if(id==='orders'){ if(state.access) loadOrders(); else setStatus('Login required'); }
     });
@@ -202,7 +203,7 @@
       if(!u||!p){ toast('Enter username and password'); return; }
       await login(u,p);
       // On login, refresh all sections
-      loadDashboard(); loadUsers(); loadPendingUsers(); loadDeposits(); loadWithdrawals(); loadReferrals(); loadProofs(); loadProducts();
+      loadDashboard(); loadUsers(); loadPendingUsers(); loadDeposits(); loadWithdrawals(); loadReferrals(); loadProofs(); loadProducts(); loadGlobalPool(); loadSystemOverview();
     }catch(e){ console.error(e); toast(String(e?.message || e || 'Login failed')); }
   });
   $('#logoutBtn').addEventListener('click', ()=>{ logout(); });
@@ -232,7 +233,7 @@
 
   async function loadUsers(){
     const tbody = $('#usersTbody');
-    tbody.innerHTML = '<tr><td colspan="12" class="muted">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="16" class="muted">Loading...</td></tr>';
     try{
       const params = new URLSearchParams({
         page: String(usersState.page),
@@ -248,7 +249,7 @@
       const data = await get(`${state.apiBase}/accounts/admin/users/?${params.toString()}`);
       const rows = data.results || [];
       if(!rows.length){
-        tbody.innerHTML = '<tr><td colspan="12" class="muted">No users found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="16" class="muted">No users found</td></tr>';
       } else {
         tbody.innerHTML = '';
         rows.forEach(u=>{
@@ -262,11 +263,17 @@
             <td>${u.is_staff ? 'Yes' : 'No'}</td>
             <td>${u.is_approved ? 'Yes' : 'No'}</td>
             <td>${Number(u.rewards_usd||0).toFixed(2)}</td>
+            <td>${Number(u.passive_income_usd||0).toFixed(2)}</td>
+            <td>${Number(u.current_balance_usd||0).toFixed(2)}</td>
             <td>${Number(u.referrals_count||0)}</td>
             <td>${escapeHtml(u.bank_name || '-')}</td>
             <td>${escapeHtml(u.account_name || '-')}</td>
             <td>${u.date_joined ? new Date(u.date_joined).toLocaleString() : '-'}</td>
             <td>${u.last_login ? new Date(u.last_login).toLocaleString() : '-'}</td>
+            <td>
+              ${!u.is_approved ? `<button class="btn secondary" data-action="reject" data-id="${u.id}">Reject</button>` : ''}
+              ${u.is_active ? `<button class="btn secondary" data-action="deactivate" data-id="${u.id}">Deactivate</button>` : `<button class="btn ok" data-action="activate" data-id="${u.id}">Activate</button>`}
+            </td>
           `;
           tbody.appendChild(tr);
         });
@@ -278,7 +285,7 @@
       $('#usersPrev').disabled = usersState.page <= 1;
       $('#usersNext').disabled = usersState.page >= totalPages;
     }catch(e){
-      console.error(e); tbody.innerHTML = '<tr><td colspan="12" class="muted">Failed to load</td></tr>';
+      console.error(e); tbody.innerHTML = '<tr><td colspan="16" class="muted">Failed to load</td></tr>';
     }
   }
 
@@ -311,6 +318,28 @@
   $('#usersNext').addEventListener('click', ()=>{ usersState.page++; loadUsers(); });
 
   $('#refreshUsers').addEventListener('click', ()=>{ loadUsers(); loadPendingUsers(); });
+
+  // User actions for main users table
+  $('#usersTbody').addEventListener('click', async (e)=>{
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    const id = btn.dataset.id;
+    const action = btn.dataset.action;
+    try{
+      if(action === 'reject'){
+        await post(`${state.apiBase}/accounts/admin/reject/${id}/`);
+        toast('User rejected');
+      } else if(action === 'activate'){
+        await post(`${state.apiBase}/accounts/admin/activate/${id}/`);
+        toast('User activated');
+      } else if(action === 'deactivate'){
+        await post(`${state.apiBase}/accounts/admin/deactivate/${id}/`);
+        toast('User deactivated');
+      }
+      await loadUsers();
+      await loadDashboard();
+    }catch(err){ console.error(err); toast('Action failed'); }
+  });
 
   // Users (pending) list and actions
   async function loadPendingUsers(){
@@ -363,6 +392,56 @@
     }catch(err){ console.error(err); toast('Action failed'); }
   });
 
+  // Withdrawals
+  async function loadWithdrawals(){
+    const tbody = $('#withdrawalsTbody');
+    tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
+    try{
+      const rows = await get(`${state.apiBase}/withdrawals/admin/pending/`);
+      if(!rows.length){ 
+        tbody.innerHTML = '<tr><td colspan="9" class="muted">No pending withdrawals</td></tr>'; 
+        return; 
+      }
+      tbody.innerHTML = '';
+      rows.forEach(w=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${w.id}</td>
+          <td>${escapeHtml(w.user?.username || w.username || '-')}</td>
+          <td>${escapeHtml(w.user?.email || w.email || '-')}</td>
+          <td>${escapeHtml(w.tx_id || '-')}</td>
+          <td>${escapeHtml(w.bank_name || '-')}</td>
+          <td>${escapeHtml(w.account_name || '-')}</td>
+          <td>${Number(w.amount_usd||0).toFixed(2)}</td>
+          <td>${w.created_at ? new Date(w.created_at).toLocaleString() : '-'}</td>
+          <td>
+            <button class="btn ok" data-action="approve" data-id="${w.id}">Approve</button>
+            <button class="btn" data-action="paid" data-id="${w.id}">Mark Paid</button>
+            <button class="btn secondary" data-action="reject" data-id="${w.id}">Reject</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }catch(e){ 
+      console.error(e); 
+      tbody.innerHTML = '<tr><td colspan="9" class="muted">Failed to load</td></tr>'; 
+    }
+  }
+
+  $('#withdrawalsTbody').addEventListener('click', async (e)=>{
+    const btn = e.target.closest('button'); 
+    if(!btn) return; 
+    const id = btn.dataset.id;
+    const action = btn.dataset.action;
+    try{
+      let backendAction = action === 'approve' ? 'APPROVE' : action === 'reject' ? 'REJECT' : action === 'paid' ? 'PAID' : action;
+      await post(`${state.apiBase}/withdrawals/admin/action/${id}/`, { action: backendAction });
+      toast('Withdrawal updated');
+      await loadWithdrawals();
+      await loadDashboard();
+    }catch(err){ console.error(err); toast('Action failed'); }
+  });
+
   // Deposits
   async function loadDeposits(){
     const tbody = $('#depositsTbody');
@@ -404,6 +483,7 @@
         toast('Deposit updated');
         await loadDeposits();
         await loadDashboard();
+        await loadGlobalPool(); // Reload global pool balance after deposit action
       }catch(err){ console.error(err); toast('Action failed'); }
   });
 
@@ -663,16 +743,26 @@
     try{
       const data = await get(`${state.apiBase}/earnings/admin/global-pool/`);
       $('#globalPayoutDay').textContent = data.payout_day || 'Monday';
-      $('#globalPayoutAmount').textContent = data.last_payout?.amount_usd || '—';
+      $('#globalPoolBalance').textContent = `$${Number(data.pool_balance_usd || 0).toFixed(2)} USD`;
+      $('#globalPayoutAmount').textContent = data.last_payout?.amount_usd ? `$${Number(data.last_payout.amount_usd).toFixed(2)} USD` : '—';
       const tbody = $('#globalPoolUsersTbody');
       const rows = data.per_user_passive || [];
       tbody.innerHTML = rows.length ? '' : '<tr><td colspan="2" class="muted">No data</td></tr>';
       rows.forEach(r=>{
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${escapeHtml(r.username)}</td><td>${Number(r.total_passive_usd||0).toFixed(2)}</td>`;
+        tr.innerHTML = `<td>${escapeHtml(r.username)}</td><td>$${Number(r.total_passive_usd||0).toFixed(2)} USD</td>`;
         tbody.appendChild(tr);
       });
     }catch(e){ console.error(e); toast('Failed to load global pool'); }
+  }
+
+  // System Overview
+  async function loadSystemOverview(){
+    try{
+      const data = await get(`${state.apiBase}/earnings/admin/system-overview/`);
+      // Just display this data; it's mostly static config values
+      console.log('System Overview:', data);
+    }catch(e){ console.error(e); toast('Failed to load system overview'); }
   }
 
 
@@ -691,4 +781,5 @@
   loadWithdrawals();
   loadReferrals();
   loadProofs();
+  loadGlobalPool();
 })();

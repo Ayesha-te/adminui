@@ -25,6 +25,7 @@
       <button class="nav-btn" data-section="proofs">Signup Proofs</button>
       <button class="nav-btn" data-section="system">System</button>
       <button class="nav-btn" data-section="globalpool">Global Pool</button>
+      <button class="nav-btn" data-section="systemoverview">System Overview</button>
       <button class="nav-btn" data-section="products">Products</button>
       <button class="nav-btn" data-section="orders">Orders</button>
       <div class="spacer"></div>
@@ -96,15 +97,18 @@
               <th data-sort="is_staff">Staff</th>
               <th data-sort="is_approved">Approved</th>
               <th data-sort="rewards_usd">Rewards (USD)</th>
+              <th data-sort="passive_income_usd">Passive Income (USD)</th>
+              <th data-sort="current_balance_usd">Current Balance (USD)</th>
               <th data-sort="referrals_count">Referrals</th>
               <th>Bank</th>
               <th>Account</th>
               <th data-sort="date_joined">Joined</th>
               <th data-sort="last_login">Last Login</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="usersTbody">
-            <tr><td colspan="12" class="muted">Loading...</td></tr>
+            <tr><td colspan="16" class="muted">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -259,6 +263,10 @@
           <div id="globalPayoutDay" class="stat">—</div>
         </div>
         <div class="card">
+          <h3>Current Pool Balance</h3>
+          <div id="globalPoolBalance" class="stat">—</div>
+        </div>
+        <div class="card">
           <h3>Last Payout Amount</h3>
           <div id="globalPayoutAmount" class="stat">—</div>
         </div>
@@ -270,6 +278,38 @@
           </thead>
           <tbody id="globalPoolUsersTbody"></tbody>
         </table>
+      </div>
+    </section>
+
+    <section id="systemoverview" class="section">
+      <div class="section-head">
+        <h3>System Overview</h3>
+      </div>
+      <div class="overview-content">
+        <h4>How the Global Pool System Works</h4>
+        <ul>
+          <li><strong>Deposit Approval:</strong> Each time an admin approves and credits a user deposit, exactly <strong>$0.50 USD</strong> is automatically added to the global pool.</li>
+          <li><strong>Weekly Distribution:</strong> Every <strong>Monday</strong>, the entire global pool balance is distributed equally among all approved users.</li>
+          <li><strong>Calculation Example:</strong> If 20 deposits were approved this week → Pool = 20 × $0.50 = $10.00. If there are 100 approved users → Each user gets $10 ÷ 100 = $0.10 USD ≈ 28 PKR.</li>
+          <li><strong>Withdrawal Tax:</strong> A <strong>20% tax</strong> is applied to global pool payouts before they are added to user wallets.</li>
+          <li><strong>Automatic Process:</strong> The distribution happens automatically every Monday, and the net amount (after tax) is credited to each user's available balance.</li>
+        </ul>
+        
+        <h4>Platform Economics</h4>
+        <ul>
+          <li><strong>User Share:</strong> 80% of each deposit goes to the user's earning balance for passive income.</li>
+          <li><strong>Global Pool:</strong> Fixed $0.50 per approval goes to the global pool for weekly distribution.</li>
+          <li><strong>Platform Operations:</strong> The remaining portion supports platform operations and maintenance.</li>
+          <li><strong>Passive Earnings:</strong> Users earn daily passive income on their balance according to the schedule (0.4% to 1.3% daily).</li>
+          <li><strong>Referral System:</strong> Users earn from referrals: 6% (L1), 3% (L2), 1% (L3) of signup fees.</li>
+        </ul>
+        
+        <h4>Tax Structure</h4>
+        <ul>
+          <li><strong>Withdrawal Tax:</strong> 20% on all withdrawals (including global pool payouts).</li>
+          <li><strong>No Tax on Deposits:</strong> Deposits are split according to the economics but no additional tax.</li>
+          <li><strong>Referral Earnings:</strong> Paid directly to user wallets without additional tax.</li>
+        </ul>
       </div>
     </section>
 
