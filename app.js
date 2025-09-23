@@ -103,12 +103,36 @@
     try{ localStorage.setItem('adminApiBase', base); }catch(_){ }
     state.apiBase = base; showApiBase();
     console.log('Admin UI connected to:', base);
+    
+    // Validate stored tokens after API base is set
+    setTimeout(async () => {
+      if (state.access || state.refresh) {
+        console.log('Validating stored authentication tokens...');
+        await validateStoredTokens();
+      }
+    }, 1000);
   })();
 
   const setStatus = (msg) => $('#status').textContent = msg || '';
+  
+  const setAuthStatus = (isAuthenticated, message = '') => {
+    const authStatusEl = $('#authStatus');
+    if (isAuthenticated) {
+      authStatusEl.textContent = message || 'Authenticated ✓';
+      authStatusEl.style.color = '#28a745';
+    } else {
+      authStatusEl.textContent = message || 'Not Authenticated';
+      authStatusEl.style.color = '#dc3545';
+    }
+  };
 
   function authHeaders(headers={}){
-    if(state.access){ headers['Authorization'] = `Bearer ${state.access}`; }
+    if(state.access){ 
+      headers['Authorization'] = `Bearer ${state.access}`;
+      console.log('Adding Authorization header with token:', state.access.substring(0, 20) + '...');
+    } else {
+      console.log('No access token available for Authorization header');
+    }
     return headers;
   }
 
@@ -118,10 +142,14 @@
     setStatus('');
     if (res.status === 401 && state.refresh) {
       // attempt refresh and retry once
-      await refreshToken();
-      const retry = await fetch(url, { headers: authHeaders(), credentials: 'omit' });
-      if(!retry.ok) throw new Error(await retry.text());
-      return retry.json();
+      const refreshSuccess = await refreshToken();
+      if (refreshSuccess) {
+        const retry = await fetch(url, { headers: authHeaders(), credentials: 'omit' });
+        if(!retry.ok) throw new Error(await retry.text());
+        return retry.json();
+      } else {
+        throw new Error('Authentication failed. Please login again.');
+      }
     }
     if (!res.ok) throw new Error(await res.text());
     return res.json();
@@ -137,15 +165,19 @@
     });
     setStatus('');
     if (res.status === 401 && state.refresh) {
-      await refreshToken();
-      const retry = await fetch(url, {
-        method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        credentials: 'omit',
-        body: JSON.stringify(body||{})
-      });
-      if(!retry.ok) throw new Error(await retry.text());
-      return retry.json().catch(()=>({ ok:true }));
+      const refreshSuccess = await refreshToken();
+      if (refreshSuccess) {
+        const retry = await fetch(url, {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          credentials: 'omit',
+          body: JSON.stringify(body||{})
+        });
+        if(!retry.ok) throw new Error(await retry.text());
+        return retry.json().catch(()=>({ ok:true }));
+      } else {
+        throw new Error('Authentication failed. Please login again.');
+      }
     }
     if (!res.ok) throw new Error(await res.text());
     return res.json().catch(()=>({ ok:true }));
@@ -161,15 +193,19 @@
     });
     setStatus('');
     if (res.status === 401 && state.refresh) {
-      await refreshToken();
-      const retry = await fetch(url, {
-        method: 'PATCH',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        credentials: 'omit',
-        body: JSON.stringify(body||{})
-      });
-      if(!retry.ok) throw new Error(await retry.text());
-      return retry.json().catch(()=>({ ok:true }));
+      const refreshSuccess = await refreshToken();
+      if (refreshSuccess) {
+        const retry = await fetch(url, {
+          method: 'PATCH',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          credentials: 'omit',
+          body: JSON.stringify(body||{})
+        });
+        if(!retry.ok) throw new Error(await retry.text());
+        return retry.json().catch(()=>({ ok:true }));
+      } else {
+        throw new Error('Authentication failed. Please login again.');
+      }
     }
     if (!res.ok) throw new Error(await res.text());
     return res.json().catch(()=>({ ok:true }));
@@ -193,27 +229,157 @@
       localStorage.setItem('admin_access', state.access || '');
       localStorage.setItem('admin_refresh', state.refresh || '');
     } catch {}
+    setAuthStatus(true, 'Logged in ✓');
     toast('Logged in');
   }
 
   async function refreshToken(){
-    if(!state.refresh) return;
-    const data = await fetch(`${state.apiBase}/auth/token/refresh/`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh: state.refresh })
-    }).then(r=>{ if(!r.ok) throw new Error('Refresh failed'); return r.json(); });
-    state.access = data.access;
-    if (data.refresh) { state.refresh = data.refresh; }
+    if(!state.refresh) {
+      console.log('No refresh token available');
+      return false;
+    }
+    
     try {
-      localStorage.setItem('admin_access', state.access || '');
-      if (state.refresh) localStorage.setItem('admin_refresh', state.refresh);
-    } catch {}
+      const res = await fetch(`${state.apiBase}/auth/token/refresh/`, {
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh: state.refresh })
+      });
+      
+      if (!res.ok) {
+        console.log('Token refresh failed:', res.status, res.statusText);
+        // Clear invalid tokens
+        logout();
+        toast('Session expired. Please login again.');
+        return false;
+      }
+      
+      const data = await res.json();
+      state.access = data.access;
+      if (data.refresh) { 
+        state.refresh = data.refresh; 
+      }
+      
+      try {
+        localStorage.setItem('admin_access', state.access || '');
+        if (state.refresh) localStorage.setItem('admin_refresh', state.refresh);
+      } catch(e) {
+        console.error('Failed to save tokens to localStorage:', e);
+      }
+      
+      console.log('Token refreshed successfully');
+      setAuthStatus(true, 'Token refreshed ✓');
+      return true;
+    } catch (error) {
+      console.error('Token refresh error:', error);
+      logout();
+      toast('Session expired. Please login again.');
+      return false;
+    }
   }
 
   function logout(){
     state.access = null; state.refresh = null;
     try { localStorage.removeItem('admin_access'); localStorage.removeItem('admin_refresh'); } catch {}
+    setAuthStatus(false, 'Logged out');
     toast('Logged out');
+  }
+
+  // Validate stored tokens on app load
+  async function validateStoredTokens() {
+    if (!state.access) return false;
+    
+    try {
+      // Test the access token with a simple API call
+      const res = await fetch(`${state.apiBase}/accounts/admin/users/?page=1&page_size=1`, {
+        headers: authHeaders(),
+        credentials: 'omit'
+      });
+      
+      if (res.ok) {
+        console.log('Stored access token is valid');
+        setAuthStatus(true, 'Token validated ✓');
+        return true;
+      } else if (res.status === 401 && state.refresh) {
+        console.log('Access token expired, attempting refresh...');
+        setAuthStatus(false, 'Token expired, refreshing...');
+        return await refreshToken();
+      } else {
+        console.log('Token validation failed, clearing tokens');
+        setAuthStatus(false, 'Token invalid');
+        logout();
+        return false;
+      }
+    } catch (error) {
+      console.error('Token validation error:', error);
+      setAuthStatus(false, 'Connection error');
+      logout();
+      return false;
+    }
+  }
+
+  // Debug helper function - call from browser console
+  window.debugAuth = function() {
+    console.log('=== AUTHENTICATION DEBUG INFO ===');
+    console.log('API Base:', state.apiBase);
+    console.log('Access Token:', state.access ? state.access.substring(0, 50) + '...' : 'None');
+    console.log('Refresh Token:', state.refresh ? state.refresh.substring(0, 50) + '...' : 'None');
+    console.log('LocalStorage Access:', localStorage.getItem('admin_access') ? 'Present' : 'Missing');
+    console.log('LocalStorage Refresh:', localStorage.getItem('admin_refresh') ? 'Present' : 'Missing');
+    
+    // Test a simple API call
+    if (state.access) {
+      console.log('Testing API call...');
+      fetch(`${state.apiBase}/accounts/admin/users/?page=1&page_size=1`, {
+        headers: authHeaders(),
+        credentials: 'omit'
+      }).then(res => {
+        console.log('Test API Response Status:', res.status);
+        if (res.status === 401) {
+          console.log('❌ 401 Unauthorized - Token is invalid or expired');
+        } else if (res.status === 403) {
+          console.log('❌ 403 Forbidden - User lacks admin permissions');
+        } else if (res.ok) {
+          console.log('✅ API call successful - Authentication working');
+        } else {
+          console.log('⚠️ Unexpected status:', res.status);
+        }
+      }).catch(err => {
+        console.log('❌ Network error:', err.message);
+      });
+    } else {
+      console.log('❌ No access token available');
+    }
+    console.log('=====================================');
+  };
+
+  // Enhanced error handling for API responses
+  function handleApiError(error, url) {
+    console.error('API Error:', error);
+    
+    if (error.message.includes('Authentication failed')) {
+      setAuthStatus(false, 'Auth failed');
+      toast('Please login again');
+      return;
+    }
+    
+    // Check for specific admin permission errors
+    if (url.includes('/admin/') && error.message.includes('permission')) {
+      toast('Admin access required. Check your user role.');
+      setAuthStatus(false, 'No admin access');
+      return;
+    }
+    
+    // Check for token-related errors
+    if (error.message.includes('Invalid token') || error.message.includes('Token has expired')) {
+      setAuthStatus(false, 'Token invalid');
+      toast('Session expired. Please login again.');
+      logout();
+      return;
+    }
+    
+    // Generic error handling
+    toast(`Error: ${error.message}`);
   }
 
   // Navigation
@@ -247,7 +413,7 @@
       await login(u,p);
       // On login, refresh all sections
       loadDashboard(); loadUsers(); loadPendingUsers(); loadDeposits(); loadWithdrawals(); loadReferrals(); loadProofs(); loadProducts(); loadGlobalPool(); loadSystemOverview();
-    }catch(e){ console.error(e); toast(String(e?.message || e || 'Login failed')); }
+    }catch(e){ handleApiError(e, 'login'); }
   });
   $('#logoutBtn').addEventListener('click', ()=>{ logout(); });
 
@@ -266,8 +432,7 @@
       const totalRefs = referralSummary?.total ?? (referralSummary?.total_referrals ?? '0');
       $('#statTotalReferrals').textContent = totalRefs;
     } catch (e) {
-      console.error(e);
-      toast('Failed to load dashboard');
+      handleApiError(e, 'dashboard');
     }
   }
 
