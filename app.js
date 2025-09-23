@@ -33,13 +33,14 @@
   function showApiBase(){}
 
   async function detectApiBase(){
-    // Try common candidates relative to current host, plus Render-hosted backend
-    const explicit = 'https://ref-backend-8arb.onrender.com/api';
+    // Prioritize production backend, then local development
+    const productionBackend = 'https://ref-backend-8arb.onrender.com/api';
     const candidates = [
-      explicit,
-      new URL('/api', location.origin).toString().replace(/\/$/, ''),
-      location.origin.replace(/:\d+$/, '') + ':8000/api',
-      location.origin.replace(/:\d+$/, '') + ':3002/api'
+      productionBackend,  // Production backend (Render)
+      'http://127.0.0.1:8000/api',  // Local Django server
+      'http://localhost:8000/api',   // Alternative local address
+      location.origin.replace(/:\d+$/, '') + ':8000/api',  // Dynamic local Django
+      new URL('/api', location.origin).toString().replace(/\/$/, '')
     ];
     for(const base of candidates){
       try{
@@ -57,9 +58,51 @@
 
   // Initialize API base automatically without UI controls
   (async ()=>{
+    // Clear cached API base to force re-detection
+    try{ localStorage.removeItem('adminApiBase'); }catch(_){ }
+    
+    // Try production backend first
+    const productionBase = 'https://ref-backend-8arb.onrender.com/api';
+    try {
+      const testResponse = await fetch(`${productionBase}/auth/token/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: '__probe__', password: '__probe__' })
+      });
+      if ([400, 401].includes(testResponse.status)) {
+        state.apiBase = productionBase;
+        try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
+        console.log('Admin UI connected to PRODUCTION backend:', productionBase);
+        showApiBase();
+        return;
+      }
+    } catch (e) {
+      console.log('Production backend not available, trying local development...');
+    }
+    
+    // Fallback to local development server
+    const localBase = 'http://127.0.0.1:8000/api';
+    try {
+      const testResponse = await fetch(`${localBase}/auth/token/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: '__probe__', password: '__probe__' })
+      });
+      if ([400, 401].includes(testResponse.status)) {
+        state.apiBase = localBase;
+        try{ localStorage.setItem('adminApiBase', localBase); }catch(_){ }
+        console.log('Admin UI connected to LOCAL server:', localBase);
+        showApiBase();
+        return;
+      }
+    } catch (e) {
+      console.log('Local server not available, using auto-detection...');
+    }
+    
     const base = normalizeApiBase(await detectApiBase());
     try{ localStorage.setItem('adminApiBase', base); }catch(_){ }
     state.apiBase = base; showApiBase();
+    console.log('Admin UI connected to:', base);
   })();
 
   const setStatus = (msg) => $('#status').textContent = msg || '';

@@ -1,0 +1,13 @@
+{
+  "name": "nexocart-admin-ui",
+  "version": "1.0.0",
+  "description": "Nexocart Admin Panel",
+  "main": "index.html",
+  "scripts": {
+    "deploy": "vercel --prod",
+    "dev": "vercel dev"
+  },
+  "keywords": ["admin", "nexocart", "dashboard"],
+  "author": "Nexocart Team",
+  "license": "MIT"
+}
