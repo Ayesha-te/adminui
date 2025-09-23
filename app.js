@@ -61,6 +61,11 @@
     // Clear cached API base to force re-detection
     try{ localStorage.removeItem('adminApiBase'); }catch(_){ }
     
+    // Check if we're running in production (Vercel) - don't try localhost
+    const isProduction = window.location.hostname.includes('vercel.app') || 
+                        window.location.hostname.includes('netlify.app') ||
+                        window.location.protocol === 'https:';
+    
     // Try production backend first
     const productionBase = 'https://ref-backend-8arb.onrender.com/api';
     try {
@@ -77,32 +82,45 @@
         return;
       }
     } catch (e) {
-      console.log('Production backend not available, trying local development...');
-    }
-    
-    // Fallback to local development server
-    const localBase = 'http://127.0.0.1:8000/api';
-    try {
-      const testResponse = await fetch(`${localBase}/auth/token/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: '__probe__', password: '__probe__' })
-      });
-      if ([400, 401].includes(testResponse.status)) {
-        state.apiBase = localBase;
-        try{ localStorage.setItem('adminApiBase', localBase); }catch(_){ }
-        console.log('Admin UI connected to LOCAL server:', localBase);
+      console.error('Production backend connection failed:', e.message);
+      if (isProduction) {
+        // In production, show error and don't try localhost
+        setStatus('❌ Backend connection failed. CORS or network issue detected.');
+        setAuthStatus(false, 'Backend unavailable');
+        state.apiBase = productionBase; // Keep production URL for manual retry
+        try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
         showApiBase();
         return;
       }
-    } catch (e) {
-      console.log('Local server not available, using auto-detection...');
+      console.log('Production backend not available, trying local development...');
     }
     
-    const base = normalizeApiBase(await detectApiBase());
-    try{ localStorage.setItem('adminApiBase', base); }catch(_){ }
-    state.apiBase = base; showApiBase();
-    console.log('Admin UI connected to:', base);
+    // Only try local development if not in production
+    if (!isProduction) {
+      const localBase = 'http://127.0.0.1:8000/api';
+      try {
+        const testResponse = await fetch(`${localBase}/auth/token/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: '__probe__', password: '__probe__' })
+        });
+        if ([400, 401].includes(testResponse.status)) {
+          state.apiBase = localBase;
+          try{ localStorage.setItem('adminApiBase', localBase); }catch(_){ }
+          console.log('Admin UI connected to LOCAL server:', localBase);
+          showApiBase();
+          return;
+        }
+      } catch (e) {
+        console.log('Local server not available, falling back to production...');
+      }
+      
+      // Fallback to production if local fails
+      state.apiBase = productionBase;
+      try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
+      console.log('Admin UI falling back to PRODUCTION backend:', productionBase);
+      showApiBase();
+    }
     
     // Validate stored tokens after API base is set
     setTimeout(async () => {
@@ -123,6 +141,27 @@
     } else {
       authStatusEl.textContent = message || 'Not Authenticated';
       authStatusEl.style.color = '#dc3545';
+    }
+  };
+
+  const handleApiError = (error, endpoint = '') => {
+    console.error('API Error:', error);
+    
+    if (error.message && error.message.includes('Failed to fetch')) {
+      if (endpoint.includes('cors') || error.message.includes('CORS')) {
+        setStatus('❌ CORS Error: Backend not configured for this domain');
+        return 'CORS configuration issue detected. Contact administrator.';
+      } else {
+        setStatus('❌ Network Error: Cannot reach backend server');
+        return 'Backend server is unreachable. Check your connection.';
+      }
+    } else if (error.message && error.message.includes('401')) {
+      setStatus('❌ Authentication Error: Please login again');
+      setAuthStatus(false, 'Authentication expired');
+      return 'Authentication failed. Please login again.';
+    } else {
+      setStatus('❌ API Error: ' + (error.message || 'Unknown error'));
+      return error.message || 'An unknown error occurred.';
     }
   };
 
@@ -356,6 +395,14 @@
   // Enhanced error handling for API responses
   function handleApiError(error, url) {
     console.error('API Error:', error);
+    
+    // Check for CORS errors
+    if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+      setAuthStatus(false, 'Connection failed');
+      toast('❌ Connection failed. Check if backend is running and CORS is configured.');
+      setStatus('CORS or network error - check backend configuration');
+      return;
+    }
     
     if (error.message.includes('Authentication failed')) {
       setAuthStatus(false, 'Auth failed');
@@ -600,55 +647,7 @@
     }catch(err){ console.error(err); toast('Action failed'); }
   });
 
-  // Withdrawals
-  async function loadWithdrawals(){
-    const tbody = $('#withdrawalsTbody');
-    tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
-    try{
-      const rows = await get(`${state.apiBase}/withdrawals/admin/pending/`);
-      if(!rows.length){ 
-        tbody.innerHTML = '<tr><td colspan="9" class="muted">No pending withdrawals</td></tr>'; 
-        return; 
-      }
-      tbody.innerHTML = '';
-      rows.forEach(w=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${w.id}</td>
-          <td>${escapeHtml(w.user?.username || w.username || '-')}</td>
-          <td>${escapeHtml(w.user?.email || w.email || '-')}</td>
-          <td>${escapeHtml(w.tx_id || '-')}</td>
-          <td>${escapeHtml(w.bank_name || '-')}</td>
-          <td>${escapeHtml(w.account_name || '-')}</td>
-          <td>${Number(w.amount_usd||0).toFixed(2)}</td>
-          <td>${w.created_at ? new Date(w.created_at).toLocaleString() : '-'}</td>
-          <td>
-            <button class="btn ok" data-action="approve" data-id="${w.id}">Approve</button>
-            <button class="btn" data-action="paid" data-id="${w.id}">Mark Paid</button>
-            <button class="btn secondary" data-action="reject" data-id="${w.id}">Reject</button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }catch(e){ 
-      console.error(e); 
-      tbody.innerHTML = '<tr><td colspan="9" class="muted">Failed to load</td></tr>'; 
-    }
-  }
-
-  $('#withdrawalsTbody').addEventListener('click', async (e)=>{
-    const btn = e.target.closest('button'); 
-    if(!btn) return; 
-    const id = btn.dataset.id;
-    const action = btn.dataset.action;
-    try{
-      let backendAction = action === 'approve' ? 'APPROVE' : action === 'reject' ? 'REJECT' : action === 'paid' ? 'PAID' : action;
-      await post(`${state.apiBase}/withdrawals/admin/action/${id}/`, { action: backendAction });
-      toast('Withdrawal updated');
-      await loadWithdrawals();
-      await loadDashboard();
-    }catch(err){ console.error(err); toast('Action failed'); }
-  });
+  // Withdrawals - function moved below to avoid duplicates
 
   // Deposits
   async function loadDeposits(){
@@ -820,41 +819,55 @@
   // Withdrawals
   async function loadWithdrawals(){
     const tbody = $('#withdrawalsTbody');
-    tbody.innerHTML = '<tr><td colspan="8" class="muted">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
     try{
       const rows = await get(`${state.apiBase}/withdrawals/admin/pending/`);
-      if(!rows.length){ tbody.innerHTML = '<tr><td colspan="8" class="muted">No pending</td></tr>'; return; }
+      if(!rows.length){ 
+        tbody.innerHTML = '<tr><td colspan="9" class="muted">No pending withdrawals</td></tr>'; 
+        return; 
+      }
       tbody.innerHTML = '';
       rows.forEach(w=>{
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${w.id}</td>
-          <td>${escapeHtml(w.user?.username || '-')}</td>
-          <td>${escapeHtml(w.user?.email || '-')}</td>
+          <td>${escapeHtml(w.username || '-')}</td>
+          <td>${escapeHtml(w.email || '-')}</td>
           <td>${escapeHtml(w.tx_id || '-')}</td>
           <td>${escapeHtml(w.bank_name || '-')}</td>
           <td>${escapeHtml(w.account_name || '-')}</td>
-          <td>${Number(w.amount_usd||0).toFixed(2)}</td>
-          <td>${escapeHtml(w.created_at || '-')}</td>
+          <td>$${Number(w.amount_usd||0).toFixed(2)}</td>
+          <td>${w.created_at ? new Date(w.created_at).toLocaleString() : '-'}</td>
           <td>
             <button class="btn ok" data-action="approve" data-id="${w.id}">Approve</button>
+            <button class="btn" data-action="paid" data-id="${w.id}">Mark Paid</button>
             <button class="btn secondary" data-action="reject" data-id="${w.id}">Reject</button>
           </td>
         `;
         tbody.appendChild(tr);
       });
-    }catch(e){ console.error(e); tbody.innerHTML = '<tr><td colspan="8" class="muted">Failed to load</td></tr>'; }
+    }catch(e){ 
+      console.error('loadWithdrawals error:', e); 
+      handleApiError(e, `${state.apiBase}/withdrawals/admin/pending/`);
+      tbody.innerHTML = '<tr><td colspan="9" class="muted">❌ Failed to load - Check connection</td></tr>'; 
+    }
   }
 
   $('#withdrawalsTbody').addEventListener('click', async (e)=>{
-    const btn = e.target.closest('button'); if(!btn) return; const id = btn.dataset.id;
+    const btn = e.target.closest('button'); 
+    if(!btn) return; 
+    const id = btn.dataset.id;
     const action = btn.dataset.action;
     try{
-      await post(`${state.apiBase}/withdrawals/admin/action/${id}/`, { action });
-      toast('Withdrawal updated');
+      let backendAction = action === 'approve' ? 'APPROVE' : action === 'reject' ? 'REJECT' : action === 'paid' ? 'PAID' : action.toUpperCase();
+      await post(`${state.apiBase}/withdrawals/admin/action/${id}/`, { action: backendAction });
+      toast(`Withdrawal ${action}d successfully`);
       await loadWithdrawals();
       await loadDashboard();
-    }catch(err){ console.error(err); toast('Action failed'); }
+    }catch(err){ 
+      console.error('Withdrawal action error:', err); 
+      toast(`Failed to ${action} withdrawal`); 
+    }
   });
 
   // System overview
