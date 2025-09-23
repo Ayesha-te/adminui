@@ -61,11 +61,6 @@
     // Clear cached API base to force re-detection
     try{ localStorage.removeItem('adminApiBase'); }catch(_){ }
     
-    // Check if we're running in production (Vercel) - don't try localhost
-    const isProduction = window.location.hostname.includes('vercel.app') || 
-                        window.location.hostname.includes('netlify.app') ||
-                        window.location.protocol === 'https:';
-    
     // Try production backend first
     const productionBase = 'https://ref-backend-8arb.onrender.com/api';
     try {
@@ -82,96 +77,38 @@
         return;
       }
     } catch (e) {
-      console.error('Production backend connection failed:', e.message);
-      if (isProduction) {
-        // In production, show error and don't try localhost
-        setStatus('❌ Backend connection failed. CORS or network issue detected.');
-        setAuthStatus(false, 'Backend unavailable');
-        state.apiBase = productionBase; // Keep production URL for manual retry
-        try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
-        showApiBase();
-        return;
-      }
       console.log('Production backend not available, trying local development...');
     }
     
-    // Only try local development if not in production
-    if (!isProduction) {
-      const localBase = 'http://127.0.0.1:8000/api';
-      try {
-        const testResponse = await fetch(`${localBase}/auth/token/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: '__probe__', password: '__probe__' })
-        });
-        if ([400, 401].includes(testResponse.status)) {
-          state.apiBase = localBase;
-          try{ localStorage.setItem('adminApiBase', localBase); }catch(_){ }
-          console.log('Admin UI connected to LOCAL server:', localBase);
-          showApiBase();
-          return;
-        }
-      } catch (e) {
-        console.log('Local server not available, falling back to production...');
+    // Fallback to local development server
+    const localBase = 'http://127.0.0.1:8000/api';
+    try {
+      const testResponse = await fetch(`${localBase}/auth/token/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: '__probe__', password: '__probe__' })
+      });
+      if ([400, 401].includes(testResponse.status)) {
+        state.apiBase = localBase;
+        try{ localStorage.setItem('adminApiBase', localBase); }catch(_){ }
+        console.log('Admin UI connected to LOCAL server:', localBase);
+        showApiBase();
+        return;
       }
-      
-      // Fallback to production if local fails
-      state.apiBase = productionBase;
-      try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
-      console.log('Admin UI falling back to PRODUCTION backend:', productionBase);
-      showApiBase();
+    } catch (e) {
+      console.log('Local server not available, using auto-detection...');
     }
     
-    // Validate stored tokens after API base is set
-    setTimeout(async () => {
-      if (state.access || state.refresh) {
-        console.log('Validating stored authentication tokens...');
-        await validateStoredTokens();
-      }
-    }, 1000);
+    const base = normalizeApiBase(await detectApiBase());
+    try{ localStorage.setItem('adminApiBase', base); }catch(_){ }
+    state.apiBase = base; showApiBase();
+    console.log('Admin UI connected to:', base);
   })();
 
   const setStatus = (msg) => $('#status').textContent = msg || '';
-  
-  const setAuthStatus = (isAuthenticated, message = '') => {
-    const authStatusEl = $('#authStatus');
-    if (isAuthenticated) {
-      authStatusEl.textContent = message || 'Authenticated ✓';
-      authStatusEl.style.color = '#28a745';
-    } else {
-      authStatusEl.textContent = message || 'Not Authenticated';
-      authStatusEl.style.color = '#dc3545';
-    }
-  };
-
-  const handleApiError = (error, endpoint = '') => {
-    console.error('API Error:', error);
-    
-    if (error.message && error.message.includes('Failed to fetch')) {
-      if (endpoint.includes('cors') || error.message.includes('CORS')) {
-        setStatus('❌ CORS Error: Backend not configured for this domain');
-        return 'CORS configuration issue detected. Contact administrator.';
-      } else {
-        setStatus('❌ Network Error: Cannot reach backend server');
-        return 'Backend server is unreachable. Check your connection.';
-      }
-    } else if (error.message && error.message.includes('401')) {
-      setStatus('❌ Authentication Error: Please login again');
-      setAuthStatus(false, 'Authentication expired');
-      return 'Authentication failed. Please login again.';
-    } else {
-      setStatus('❌ API Error: ' + (error.message || 'Unknown error'));
-      return error.message || 'An unknown error occurred.';
-    }
-  };
 
   function authHeaders(headers={}){
-    if(state.access){ 
-      headers['Authorization'] = `Bearer ${state.access}`;
-      console.log('Adding Authorization header with token:', state.access.substring(0, 20) + '...');
-    } else {
-      console.log('No access token available for Authorization header');
-    }
+    if(state.access){ headers['Authorization'] = `Bearer ${state.access}`; }
     return headers;
   }
 
@@ -181,14 +118,10 @@
     setStatus('');
     if (res.status === 401 && state.refresh) {
       // attempt refresh and retry once
-      const refreshSuccess = await refreshToken();
-      if (refreshSuccess) {
-        const retry = await fetch(url, { headers: authHeaders(), credentials: 'omit' });
-        if(!retry.ok) throw new Error(await retry.text());
-        return retry.json();
-      } else {
-        throw new Error('Authentication failed. Please login again.');
-      }
+      await refreshToken();
+      const retry = await fetch(url, { headers: authHeaders(), credentials: 'omit' });
+      if(!retry.ok) throw new Error(await retry.text());
+      return retry.json();
     }
     if (!res.ok) throw new Error(await res.text());
     return res.json();
@@ -204,19 +137,15 @@
     });
     setStatus('');
     if (res.status === 401 && state.refresh) {
-      const refreshSuccess = await refreshToken();
-      if (refreshSuccess) {
-        const retry = await fetch(url, {
-          method: 'POST',
-          headers: authHeaders({ 'Content-Type': 'application/json' }),
-          credentials: 'omit',
-          body: JSON.stringify(body||{})
-        });
-        if(!retry.ok) throw new Error(await retry.text());
-        return retry.json().catch(()=>({ ok:true }));
-      } else {
-        throw new Error('Authentication failed. Please login again.');
-      }
+      await refreshToken();
+      const retry = await fetch(url, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        credentials: 'omit',
+        body: JSON.stringify(body||{})
+      });
+      if(!retry.ok) throw new Error(await retry.text());
+      return retry.json().catch(()=>({ ok:true }));
     }
     if (!res.ok) throw new Error(await res.text());
     return res.json().catch(()=>({ ok:true }));
@@ -232,19 +161,15 @@
     });
     setStatus('');
     if (res.status === 401 && state.refresh) {
-      const refreshSuccess = await refreshToken();
-      if (refreshSuccess) {
-        const retry = await fetch(url, {
-          method: 'PATCH',
-          headers: authHeaders({ 'Content-Type': 'application/json' }),
-          credentials: 'omit',
-          body: JSON.stringify(body||{})
-        });
-        if(!retry.ok) throw new Error(await retry.text());
-        return retry.json().catch(()=>({ ok:true }));
-      } else {
-        throw new Error('Authentication failed. Please login again.');
-      }
+      await refreshToken();
+      const retry = await fetch(url, {
+        method: 'PATCH',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        credentials: 'omit',
+        body: JSON.stringify(body||{})
+      });
+      if(!retry.ok) throw new Error(await retry.text());
+      return retry.json().catch(()=>({ ok:true }));
     }
     if (!res.ok) throw new Error(await res.text());
     return res.json().catch(()=>({ ok:true }));
@@ -268,165 +193,27 @@
       localStorage.setItem('admin_access', state.access || '');
       localStorage.setItem('admin_refresh', state.refresh || '');
     } catch {}
-    setAuthStatus(true, 'Logged in ✓');
     toast('Logged in');
   }
 
   async function refreshToken(){
-    if(!state.refresh) {
-      console.log('No refresh token available');
-      return false;
-    }
-    
+    if(!state.refresh) return;
+    const data = await fetch(`${state.apiBase}/auth/token/refresh/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh: state.refresh })
+    }).then(r=>{ if(!r.ok) throw new Error('Refresh failed'); return r.json(); });
+    state.access = data.access;
+    if (data.refresh) { state.refresh = data.refresh; }
     try {
-      const res = await fetch(`${state.apiBase}/auth/token/refresh/`, {
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh: state.refresh })
-      });
-      
-      if (!res.ok) {
-        console.log('Token refresh failed:', res.status, res.statusText);
-        // Clear invalid tokens
-        logout();
-        toast('Session expired. Please login again.');
-        return false;
-      }
-      
-      const data = await res.json();
-      state.access = data.access;
-      if (data.refresh) { 
-        state.refresh = data.refresh; 
-      }
-      
-      try {
-        localStorage.setItem('admin_access', state.access || '');
-        if (state.refresh) localStorage.setItem('admin_refresh', state.refresh);
-      } catch(e) {
-        console.error('Failed to save tokens to localStorage:', e);
-      }
-      
-      console.log('Token refreshed successfully');
-      setAuthStatus(true, 'Token refreshed ✓');
-      return true;
-    } catch (error) {
-      console.error('Token refresh error:', error);
-      logout();
-      toast('Session expired. Please login again.');
-      return false;
-    }
+      localStorage.setItem('admin_access', state.access || '');
+      if (state.refresh) localStorage.setItem('admin_refresh', state.refresh);
+    } catch {}
   }
 
   function logout(){
     state.access = null; state.refresh = null;
     try { localStorage.removeItem('admin_access'); localStorage.removeItem('admin_refresh'); } catch {}
-    setAuthStatus(false, 'Logged out');
     toast('Logged out');
-  }
-
-  // Validate stored tokens on app load
-  async function validateStoredTokens() {
-    if (!state.access) return false;
-    
-    try {
-      // Test the access token with a simple API call
-      const res = await fetch(`${state.apiBase}/accounts/admin/users/?page=1&page_size=1`, {
-        headers: authHeaders(),
-        credentials: 'omit'
-      });
-      
-      if (res.ok) {
-        console.log('Stored access token is valid');
-        setAuthStatus(true, 'Token validated ✓');
-        return true;
-      } else if (res.status === 401 && state.refresh) {
-        console.log('Access token expired, attempting refresh...');
-        setAuthStatus(false, 'Token expired, refreshing...');
-        return await refreshToken();
-      } else {
-        console.log('Token validation failed, clearing tokens');
-        setAuthStatus(false, 'Token invalid');
-        logout();
-        return false;
-      }
-    } catch (error) {
-      console.error('Token validation error:', error);
-      setAuthStatus(false, 'Connection error');
-      logout();
-      return false;
-    }
-  }
-
-  // Debug helper function - call from browser console
-  window.debugAuth = function() {
-    console.log('=== AUTHENTICATION DEBUG INFO ===');
-    console.log('API Base:', state.apiBase);
-    console.log('Access Token:', state.access ? state.access.substring(0, 50) + '...' : 'None');
-    console.log('Refresh Token:', state.refresh ? state.refresh.substring(0, 50) + '...' : 'None');
-    console.log('LocalStorage Access:', localStorage.getItem('admin_access') ? 'Present' : 'Missing');
-    console.log('LocalStorage Refresh:', localStorage.getItem('admin_refresh') ? 'Present' : 'Missing');
-    
-    // Test a simple API call
-    if (state.access) {
-      console.log('Testing API call...');
-      fetch(`${state.apiBase}/accounts/admin/users/?page=1&page_size=1`, {
-        headers: authHeaders(),
-        credentials: 'omit'
-      }).then(res => {
-        console.log('Test API Response Status:', res.status);
-        if (res.status === 401) {
-          console.log('❌ 401 Unauthorized - Token is invalid or expired');
-        } else if (res.status === 403) {
-          console.log('❌ 403 Forbidden - User lacks admin permissions');
-        } else if (res.ok) {
-          console.log('✅ API call successful - Authentication working');
-        } else {
-          console.log('⚠️ Unexpected status:', res.status);
-        }
-      }).catch(err => {
-        console.log('❌ Network error:', err.message);
-      });
-    } else {
-      console.log('❌ No access token available');
-    }
-    console.log('=====================================');
-  };
-
-  // Enhanced error handling for API responses
-  function handleApiError(error, url) {
-    console.error('API Error:', error);
-    
-    // Check for CORS errors
-    if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
-      setAuthStatus(false, 'Connection failed');
-      toast('❌ Connection failed. Check if backend is running and CORS is configured.');
-      setStatus('CORS or network error - check backend configuration');
-      return;
-    }
-    
-    if (error.message.includes('Authentication failed')) {
-      setAuthStatus(false, 'Auth failed');
-      toast('Please login again');
-      return;
-    }
-    
-    // Check for specific admin permission errors
-    if (url.includes('/admin/') && error.message.includes('permission')) {
-      toast('Admin access required. Check your user role.');
-      setAuthStatus(false, 'No admin access');
-      return;
-    }
-    
-    // Check for token-related errors
-    if (error.message.includes('Invalid token') || error.message.includes('Token has expired')) {
-      setAuthStatus(false, 'Token invalid');
-      toast('Session expired. Please login again.');
-      logout();
-      return;
-    }
-    
-    // Generic error handling
-    toast(`Error: ${error.message}`);
   }
 
   // Navigation
@@ -460,7 +247,7 @@
       await login(u,p);
       // On login, refresh all sections
       loadDashboard(); loadUsers(); loadPendingUsers(); loadDeposits(); loadWithdrawals(); loadReferrals(); loadProofs(); loadProducts(); loadGlobalPool(); loadSystemOverview();
-    }catch(e){ handleApiError(e, 'login'); }
+    }catch(e){ console.error(e); toast(String(e?.message || e || 'Login failed')); }
   });
   $('#logoutBtn').addEventListener('click', ()=>{ logout(); });
 
@@ -479,7 +266,8 @@
       const totalRefs = referralSummary?.total ?? (referralSummary?.total_referrals ?? '0');
       $('#statTotalReferrals').textContent = totalRefs;
     } catch (e) {
-      handleApiError(e, 'dashboard');
+      console.error(e);
+      toast('Failed to load dashboard');
     }
   }
 
@@ -647,7 +435,55 @@
     }catch(err){ console.error(err); toast('Action failed'); }
   });
 
-  // Withdrawals - function moved below to avoid duplicates
+  // Withdrawals
+  async function loadWithdrawals(){
+    const tbody = $('#withdrawalsTbody');
+    tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
+    try{
+      const rows = await get(`${state.apiBase}/withdrawals/admin/pending/`);
+      if(!rows.length){ 
+        tbody.innerHTML = '<tr><td colspan="9" class="muted">No pending withdrawals</td></tr>'; 
+        return; 
+      }
+      tbody.innerHTML = '';
+      rows.forEach(w=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${w.id}</td>
+          <td>${escapeHtml(w.user?.username || w.username || '-')}</td>
+          <td>${escapeHtml(w.user?.email || w.email || '-')}</td>
+          <td>${escapeHtml(w.tx_id || '-')}</td>
+          <td>${escapeHtml(w.bank_name || '-')}</td>
+          <td>${escapeHtml(w.account_name || '-')}</td>
+          <td>${Number(w.amount_usd||0).toFixed(2)}</td>
+          <td>${w.created_at ? new Date(w.created_at).toLocaleString() : '-'}</td>
+          <td>
+            <button class="btn ok" data-action="approve" data-id="${w.id}">Approve</button>
+            <button class="btn" data-action="paid" data-id="${w.id}">Mark Paid</button>
+            <button class="btn secondary" data-action="reject" data-id="${w.id}">Reject</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }catch(e){ 
+      console.error(e); 
+      tbody.innerHTML = '<tr><td colspan="9" class="muted">Failed to load</td></tr>'; 
+    }
+  }
+
+  $('#withdrawalsTbody').addEventListener('click', async (e)=>{
+    const btn = e.target.closest('button'); 
+    if(!btn) return; 
+    const id = btn.dataset.id;
+    const action = btn.dataset.action;
+    try{
+      let backendAction = action === 'approve' ? 'APPROVE' : action === 'reject' ? 'REJECT' : action === 'paid' ? 'PAID' : action;
+      await post(`${state.apiBase}/withdrawals/admin/action/${id}/`, { action: backendAction });
+      toast('Withdrawal updated');
+      await loadWithdrawals();
+      await loadDashboard();
+    }catch(err){ console.error(err); toast('Action failed'); }
+  });
 
   // Deposits
   async function loadDeposits(){
@@ -819,55 +655,47 @@
   // Withdrawals
   async function loadWithdrawals(){
     const tbody = $('#withdrawalsTbody');
-    tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>'; // 1. Update colspan
     try{
       const rows = await get(`${state.apiBase}/withdrawals/admin/pending/`);
-      if(!rows.length){ 
-        tbody.innerHTML = '<tr><td colspan="9" class="muted">No pending withdrawals</td></tr>'; 
-        return; 
-      }
+      if(!rows.length){ tbody.innerHTML = '<tr><td colspan="9" class="muted">No pending</td></tr>'; return; } // 2. Update colspan
       tbody.innerHTML = '';
       rows.forEach(w=>{
         const tr = document.createElement('tr');
+        // 3. Get account number from account_details or fallback
+        const accountNumber = w.account_details?.account_number || w.account_number || '-';
         tr.innerHTML = `
           <td>${w.id}</td>
-          <td>${escapeHtml(w.username || '-')}</td>
-          <td>${escapeHtml(w.email || '-')}</td>
+          <td>${escapeHtml(w.user?.username || '-')}</td>
+          <td>${escapeHtml(w.user?.email || '-')}</td>
           <td>${escapeHtml(w.tx_id || '-')}</td>
           <td>${escapeHtml(w.bank_name || '-')}</td>
           <td>${escapeHtml(w.account_name || '-')}</td>
-          <td>$${Number(w.amount_usd||0).toFixed(2)}</td>
-          <td>${w.created_at ? new Date(w.created_at).toLocaleString() : '-'}</td>
+          <td>${escapeHtml(accountNumber)}</td> <!-- Account Number column added here -->
+          <td>${Number(w.amount_usd||0).toFixed(2)}</td>
+          <td>${escapeHtml(w.created_at || '-')}</td>
           <td>
             <button class="btn ok" data-action="approve" data-id="${w.id}">Approve</button>
-            <button class="btn" data-action="paid" data-id="${w.id}">Mark Paid</button>
             <button class="btn secondary" data-action="reject" data-id="${w.id}">Reject</button>
           </td>
         `;
         tbody.appendChild(tr);
       });
     }catch(e){ 
-      console.error('loadWithdrawals error:', e); 
-      handleApiError(e, `${state.apiBase}/withdrawals/admin/pending/`);
-      tbody.innerHTML = '<tr><td colspan="9" class="muted">❌ Failed to load - Check connection</td></tr>'; 
+      console.error(e); 
+      tbody.innerHTML = '<tr><td colspan="9" class="muted">Failed to load</td></tr>'; // 4. Update colspan
     }
-  }
+}
 
   $('#withdrawalsTbody').addEventListener('click', async (e)=>{
-    const btn = e.target.closest('button'); 
-    if(!btn) return; 
-    const id = btn.dataset.id;
+    const btn = e.target.closest('button'); if(!btn) return; const id = btn.dataset.id;
     const action = btn.dataset.action;
     try{
-      let backendAction = action === 'approve' ? 'APPROVE' : action === 'reject' ? 'REJECT' : action === 'paid' ? 'PAID' : action.toUpperCase();
-      await post(`${state.apiBase}/withdrawals/admin/action/${id}/`, { action: backendAction });
-      toast(`Withdrawal ${action}d successfully`);
+      await post(`${state.apiBase}/withdrawals/admin/action/${id}/`, { action });
+      toast('Withdrawal updated');
       await loadWithdrawals();
       await loadDashboard();
-    }catch(err){ 
-      console.error('Withdrawal action error:', err); 
-      toast(`Failed to ${action} withdrawal`); 
-    }
+    }catch(err){ console.error(err); toast('Action failed'); }
   });
 
   // System overview
