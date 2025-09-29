@@ -37,8 +37,8 @@
     const productionBackend = 'https://ref-backend-8arb.onrender.com/api';
     const candidates = [
       productionBackend,  // Production backend (Render)
-      'https://ref-backend-8arb.onrender.com/api',  // Local Django server
-      'https://ref-backend-8arb.onrender.com/api',   // Alternative local address
+      'http://127.0.0.1:8000/api',  // Local Django server
+      'http://localhost:8000/api',   // Alternative local address
       location.origin.replace(/:\d+$/, '') + ':8000/api',  // Dynamic local Django
       new URL('/api', location.origin).toString().replace(/\/$/, '')
     ];
@@ -81,7 +81,7 @@
     }
     
     // Fallback to local development server
-    const localBase = 'https://ref-backend-8arb.onrender.com/api';
+    const localBase = 'http://127.0.0.1:8000/api';
     try {
       const testResponse = await fetch(`${localBase}/auth/token/`, {
         method: 'POST',
