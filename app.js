@@ -11,10 +11,17 @@
     return base;
   }
   const defaultApiBaseRaw =
-    (typeof localStorage !== 'undefined' && localStorage.getItem('adminApiBase')) ||
     new URLSearchParams(location.search).get('apiBase') ||
-    new URL('/api', location.origin).toString().replace(/\/$/, '');
+    'https://ref-backend-fw8y.onrender.com/api'; // Force production backend
   const defaultApiBase = normalizeApiBase(defaultApiBaseRaw);
+  
+  // Clear any conflicting localStorage that might cause issues
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('adminApiBase');
+    localStorage.setItem('adminApiBase', defaultApiBase);
+  }
+  
+  console.log('🔧 DEBUG: Forced API base to:', defaultApiBase);
   // Initialize state with tokens from localStorage if available
   const state = {
     apiBase: defaultApiBase,
@@ -29,61 +36,6 @@
     setTimeout(()=>{ el.style.display = 'none'; }, 2000);
   };
 
-  // Global functions for debugging
-  window.setApiBase = function(url) {
-    state.apiBase = normalizeApiBase(url);
-    try{ localStorage.setItem('adminApiBase', state.apiBase); }catch(_){ }
-    console.log('API Base manually set to:', state.apiBase);
-    toast('API Base updated to: ' + state.apiBase);
-  };
-
-  // Convenience helpers for local/prod switching
-  window.useLocalApi = function(port=8000){
-    const base = `http://localhost:${port}/api`;
-    window.setApiBase(base);
-    return base;
-  };
-  window.useProdApi = function(){
-    const base = 'https://ref-backend-fw8y.onrender.com/api';
-    window.setApiBase(base);
-    return base;
-  };
-  
-  window.getApiBase = function() {
-    console.log('Current API Base:', state.apiBase);
-    return state.apiBase;
-  };
-  
-  window.testApi = async function() {
-    try {
-      const response = await fetch(`${state.apiBase}/auth/token/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: '__probe__', password: '__probe__' })
-      });
-      console.log('API Test Result:', response.status, response.statusText, '->', state.apiBase);
-      toast(`API ${response.status} @ ${state.apiBase}`);
-      return response.status;
-    } catch (e) {
-      console.error('API Test Failed:', e);
-      toast('API test failed');
-      return false;
-    }
-  };
-
-  // Quick UI bindings for switching API base
-  document.addEventListener('DOMContentLoaded', ()=>{
-    const toLocal = document.getElementById('switchToLocal');
-    const toProd = document.getElementById('switchToProd');
-    if (toLocal) toLocal.addEventListener('click', ()=>{ window.useLocalApi(); window.testApi(); });
-    if (toProd) toProd.addEventListener('click', ()=>{ window.useProdApi(); window.testApi(); });
-  });
-
-  console.log('Admin UI Debug Commands:');
-  console.log('- setApiBase("http://192.168.100.141:8000/api") - Set API base manually');
-  console.log('- getApiBase() - Get current API base');
-  console.log('- testApi() - Test API connection');
-
   // Render current API base (no longer shown in UI)
   function showApiBase(){}
 
@@ -92,7 +44,6 @@
     const productionBackend = 'https://ref-backend-fw8y.onrender.com/api';
     const candidates = [
       productionBackend,  // Production backend (Render)
-      'http://192.168.100.141:8000/api',  // Network IP
       'http://127.0.0.1:8000/api',  // Local Django server
       'http://localhost:8000/api',   // Alternative local address
       location.origin.replace(/:\d+$/, '') + ':8000/api',  // Dynamic local Django
@@ -114,82 +65,69 @@
 
   // Initialize API base automatically without UI controls
   (async ()=>{
-    // Respect stored API base if present (do not override every load)
-    let storedBase = null;
-    try { storedBase = localStorage.getItem('adminApiBase'); } catch(_){ }
-    if (storedBase) {
-      state.apiBase = normalizeApiBase(storedBase);
-      console.log('Using stored API base:', state.apiBase);
-      showApiBase();
-      // Validate tokens shortly after
-      setTimeout(async ()=>{ if (state.access || state.refresh) await validateStoredTokens(); }, 500);
-      return;
-    }
-
+    // Clear cached API base to force re-detection
+    try{ localStorage.removeItem('adminApiBase'); }catch(_){ }
+    
     // Check if we're running in production (Vercel) - don't try localhost
     const isProduction = window.location.hostname.includes('vercel.app') || 
                         window.location.hostname.includes('netlify.app') ||
                         window.location.protocol === 'https:';
     
-    // Try local development first when not production
+    // Try production backend first
     const productionBase = 'https://ref-backend-fw8y.onrender.com/api';
-
-    if (!isProduction) {
-      const localCandidates = [
-        'http://127.0.0.1:8000/api',
-        'http://localhost:8000/api',
-        location.origin.replace(/:\d+$/, '') + ':8000/api'
-      ];
-      for (const localBase of localCandidates) {
-        try {
-          console.log('Testing local backend:', localBase);
-          const testResponse = await fetch(`${localBase}/auth/token/`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: '__probe__', password: '__probe__' })
-          });
-          if ([400, 401].includes(testResponse.status)) {
-            state.apiBase = localBase;
-            try{ localStorage.setItem('adminApiBase', localBase); }catch(_){ }
-            console.log('✅ Admin UI connected to LOCAL backend:', localBase);
-            showApiBase();
-            return;
-          }
-        } catch (e) {
-          console.log(`Local server ${localBase} not available:`, e.message);
-        }
-      }
-    }
-
-    // Fallback: try production
-    console.log('Testing production backend:', productionBase);
     try {
       const testResponse = await fetch(`${productionBase}/auth/token/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: '__probe__', password: '__probe__' })
       });
-      console.log('Production backend response:', testResponse.status);
       if ([400, 401].includes(testResponse.status)) {
         state.apiBase = productionBase;
         try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
-        console.log('✅ Admin UI connected to PRODUCTION backend:', productionBase);
+        console.log('Admin UI connected to PRODUCTION backend:', productionBase);
         showApiBase();
         return;
       }
     } catch (e) {
-      console.error('❌ Production backend connection failed:', e.message);
+      console.error('Production backend connection failed:', e.message);
       if (isProduction) {
+        // In production, show error and don't try localhost
         setStatus('❌ Backend connection failed. CORS or network issue detected.');
         setAuthStatus(false, 'Backend unavailable');
-        state.apiBase = productionBase;
+        state.apiBase = productionBase; // Keep production URL for manual retry
         try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
         showApiBase();
         return;
       }
-      console.log('Production backend not available.');
+      console.log('Production backend not available, trying local development...');
     }
     
-
+    // Only try local development if not in production
+    if (!isProduction) {
+      const localBase = 'http://127.0.0.1:8000/api';
+      try {
+        const testResponse = await fetch(`${localBase}/auth/token/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: '__probe__', password: '__probe__' })
+        });
+        if ([400, 401].includes(testResponse.status)) {
+          state.apiBase = localBase;
+          try{ localStorage.setItem('adminApiBase', localBase); }catch(_){ }
+          console.log('Admin UI connected to LOCAL server:', localBase);
+          showApiBase();
+          return;
+        }
+      } catch (e) {
+        console.log('Local server not available, falling back to production...');
+      }
+      
+      // Fallback to production if local fails
+      state.apiBase = productionBase;
+      try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
+      console.log('Admin UI falling back to PRODUCTION backend:', productionBase);
+      showApiBase();
+    }
     
     // Validate stored tokens after API base is set
     setTimeout(async () => {
@@ -204,36 +142,32 @@
   
   const setAuthStatus = (isAuthenticated, message = '') => {
     const authStatusEl = $('#authStatus');
-    const loginBtn = $('#loginBtn');
-    const loginForm = $('#loginForm');
-    
-    if (authStatusEl) {
-      if (isAuthenticated) {
-        authStatusEl.textContent = message || 'Authenticated ✓';
-        authStatusEl.style.color = '#28a745';
-      } else {
-        authStatusEl.textContent = message || 'Not Authenticated';
-        authStatusEl.style.color = '#dc3545';
-      }
-    }
-    
-    if (loginBtn) {
-      loginBtn.textContent = isAuthenticated ? 'Logout' : 'Login';
-    }
-    
-    if (loginForm) {
-      loginForm.style.display = 'none';
+    if (isAuthenticated) {
+      authStatusEl.textContent = message || 'Authenticated ✓';
+      authStatusEl.style.color = '#28a745';
+    } else {
+      authStatusEl.textContent = message || 'Not Authenticated';
+      authStatusEl.style.color = '#dc3545';
     }
   };
 
   function authHeaders(headers={}){
-    if(state.access){ 
-      headers['Authorization'] = `Bearer ${state.access}`;
-      console.log('Adding Authorization header with token:', state.access.substring(0, 20) + '...');
+    // Ensure we always start with proper headers
+    const baseHeaders = {
+      'Content-Type': 'application/json',
+      ...headers
+    };
+    
+    if(state.access && state.access.trim()){ 
+      baseHeaders['Authorization'] = `Bearer ${state.access}`;
+      console.log('🔑 Adding Authorization header with token:', state.access.substring(0, 20) + '...');
+      console.log('🔍 Full headers being sent:', baseHeaders);
     } else {
-      console.log('No access token available for Authorization header');
+      console.log('❌ No access token available for Authorization header');
+      console.log('🔍 Token in state:', state.access ? 'exists' : 'missing');
+      console.log('🔍 Token in localStorage:', localStorage.getItem('admin_access') ? 'exists' : 'missing');
     }
-    return headers;
+    return baseHeaders;
   }
 
   const get = async (url) => {
@@ -312,16 +246,14 @@
   };
 
   async function login(username, password){
-    console.log('Attempting login with:', username, 'to API:', state.apiBase);
     const res = await fetch(`${state.apiBase}/auth/token/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
     });
-    console.log('Login response status:', res.status);
     if(!res.ok){
       let detail = 'Login failed';
-      try { const data = await res.json(); detail = data?.detail || detail; console.log('Login error data:', data); } catch(_){ try{ detail = await res.text() || detail; console.log('Login error text:', detail); }catch(__){}
+      try { const data = await res.json(); detail = data?.detail || detail; } catch(_){ try{ detail = await res.text() || detail; }catch(__){}
       }
       throw new Error(`[${res.status}] ${detail}`);
     }
@@ -496,8 +428,7 @@
   $$('.nav-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const id = btn.dataset.section;
-      const headerTitle = $('#sectionTitle') || $('#pageTitle');
-      if (headerTitle) headerTitle.textContent = btn.textContent;
+      $('#sectionTitle').textContent = btn.textContent; // fix: use single element selector
       $$('.section').forEach(s => s.classList.remove('active'));
       $('#'+id).classList.add('active');
       // Auto-load when switching sections (only if logged in when admin endpoints)
@@ -516,62 +447,17 @@
   });
 
   // Login bindings
-  const loginBtn = $('#loginBtn');
-  const loginForm = $('#loginForm');
-  const usernameInput = $('#username');
-  const passwordInput = $('#password');
-  const doLoginBtn = $('#doLogin');
-  
-  if (loginBtn) {
-    loginBtn.addEventListener('click', ()=>{
-      // Handle logout if already logged in
-      if(loginBtn.textContent === 'Logout'){
-        logout();
-        loginBtn.textContent = 'Login';
-        if (loginForm) loginForm.style.display = 'none';
-        return;
-      }
-      
-      // Show/hide login form
-      if(loginForm){
-        if(loginForm.style.display === 'none'){
-          loginForm.style.display = 'flex';
-          loginBtn.textContent = 'Cancel';
-          if (usernameInput) usernameInput.focus();
-        } else {
-          loginForm.style.display = 'none';
-          loginBtn.textContent = 'Login';
-        }
-      }
-    });
-  }
-  
-  if (doLoginBtn) {
-    doLoginBtn.addEventListener('click', async ()=>{
-      try{
-        const u = usernameInput ? usernameInput.value.trim() : '';
-        const p = passwordInput ? passwordInput.value : '';
-        if(!u||!p){ toast('Enter username and password'); return; }
-        await login(u,p);
-        if (loginForm) loginForm.style.display = 'none';
-        if (loginBtn) loginBtn.textContent = 'Logout';
-        // On login, refresh all sections
-        loadDashboard(); loadUsers(); loadPendingUsers(); loadDeposits(); loadWithdrawals(); loadReferrals(); loadProofs(); loadProducts(); loadGlobalPool(); loadSystemOverview();
-      }catch(e){ handleApiError(e, 'login'); }
-    });
-  }
-  
-  // Handle Enter key in login inputs
-  if (usernameInput) {
-    usernameInput.addEventListener('keypress', (e) => {
-      if(e.key === 'Enter' && passwordInput) passwordInput.focus();
-    });
-  }
-  if (passwordInput) {
-    passwordInput.addEventListener('keypress', (e) => {
-      if(e.key === 'Enter' && doLoginBtn) doLoginBtn.click();
-    });
-  }
+  $('#loginBtn').addEventListener('click', async ()=>{
+    try{
+      const u = $('#loginUsername').value.trim();
+      const p = $('#loginPassword').value;
+      if(!u||!p){ toast('Enter username and password'); return; }
+      await login(u,p);
+      // On login, refresh all sections
+      loadDashboard(); loadUsers(); loadPendingUsers(); loadDeposits(); loadWithdrawals(); loadReferrals(); loadProofs(); loadProducts(); loadGlobalPool(); loadSystemOverview();
+    }catch(e){ handleApiError(e, 'login'); }
+  });
+  $('#logoutBtn').addEventListener('click', ()=>{ logout(); });
 
   // Dashboard stats loaders
   async function loadDashboard(){
@@ -645,12 +531,9 @@
       // pagination info
       const total = data.count || 0;
       const totalPages = Math.max(1, Math.ceil(total / usersState.pageSize));
-      const pageInfoEl = $('#usersPageInfo');
-      const prevEl = $('#usersPrev');
-      const nextEl = $('#usersNext');
-      if (pageInfoEl) pageInfoEl.textContent = `Page ${usersState.page} of ${totalPages} (${total} users)`;
-      if (prevEl) prevEl.disabled = usersState.page <= 1;
-      if (nextEl) nextEl.disabled = usersState.page >= totalPages;
+      $('#usersPageInfo').textContent = `Page ${usersState.page} of ${totalPages} (${total} users)`;
+      $('#usersPrev').disabled = usersState.page <= 1;
+      $('#usersNext').disabled = usersState.page >= totalPages;
     }catch(e){
       console.error(e); tbody.innerHTML = '<tr><td colspan="16" class="muted">Failed to load</td></tr>';
     }
@@ -738,8 +621,8 @@
           <td>${proofLink}</td>
           <td>${u.submitted_at ? new Date(u.submitted_at).toLocaleString() : '-'}</td>
           <td>
-            <button class="btn ok" data-action="approve" data-proof-id="${u.signup_proof_id || ''}" data-id="${u.id}">Approve</button>
-            <button class="btn secondary" data-action="reject" data-proof-id="${u.signup_proof_id || ''}" data-id="${u.id}">Reject</button>
+            <button class="btn ok" data-action="approve" data-id="${u.id}">Approve</button>
+            <button class="btn secondary" data-action="reject" data-id="${u.id}">Reject</button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -753,29 +636,18 @@
     console.log('Pending users table click detected:', e.target);
     const btn = e.target.closest('button');
     if(!btn) return;
-    const id = btn.dataset.id; // user id
-    const proofId = btn.dataset.proofId; // signup proof id
+    const id = btn.dataset.id;
     const action = btn.dataset.action;
-    console.log('Pending user action:', action, 'UserID:', id, 'ProofID:', proofId, 'API Base:', state.apiBase);
+    console.log('Pending user action:', action, 'ID:', id, 'API Base:', state.apiBase);
     try{
-      if(action === 'approve'){
-        if (proofId) {
-          console.log('Approving via signup-proof action for proof:', proofId);
-          await post(`${state.apiBase}/accounts/admin/signup-proof/action/${proofId}/`, { action: 'APPROVE' });
-        } else {
-          console.log('No proofId available; falling back to user approve:', id);
-          await post(`${state.apiBase}/accounts/admin/approve/${id}/`);
-        }
+      if(btn.dataset.action==='approve'){
+        console.log('Attempting to approve user:', id);
+        await post(`${state.apiBase}/accounts/admin/approve/${id}/`);
         toast('User approved');
-      } else if(action === 'reject'){
-        if (proofId) {
-          console.log('Rejecting via signup-proof action for proof:', proofId);
-          await post(`${state.apiBase}/accounts/admin/signup-proof/action/${proofId}/`, { action: 'REJECT' });
-        } else {
-          console.log('No proofId available; falling back to user reject:', id);
-          const response = await post(`${state.apiBase}/accounts/admin/reject/${id}/`);
-          console.log('Reject response (fallback):', response);
-        }
+      }else if(btn.dataset.action==='reject'){
+        console.log('Attempting to reject pending user:', id);
+        const response = await post(`${state.apiBase}/accounts/admin/reject/${id}/`);
+        console.log('Reject response:', response);
         toast('User rejected');
       }
       await loadPendingUsers();
@@ -961,14 +833,12 @@
     tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
     try{
       const rows = await get(`${state.apiBase}/withdrawals/admin/pending/`);
-      console.log('Withdrawals data loaded:', rows);
       if(!rows.length){ 
         tbody.innerHTML = '<tr><td colspan="9" class="muted">No pending withdrawals</td></tr>'; 
         return; 
       }
       tbody.innerHTML = '';
       rows.forEach(w=>{
-        console.log('Processing withdrawal:', w.id, 'TX ID:', w.tx_id);
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${w.id}</td>
