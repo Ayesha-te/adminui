@@ -1,8 +1,13 @@
 {
-  "rewrites": [
+  "functions": {
+    "index.html": {
+      "runtime": "@vercel/static"
+    }
+  },
+  "routes": [
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ],
   "headers": [

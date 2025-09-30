@@ -28,7 +28,6 @@
       <button class="nav-btn" data-section="systemoverview">System Overview</button>
       <button class="nav-btn" data-section="products">Products</button>
       <button class="nav-btn" data-section="orders">Orders</button>
-      <button class="nav-btn" data-section="howitworks">How It Works</button>
       <div class="spacer"></div>
       <div class="config">
         <label>Admin Login</label>
@@ -46,7 +45,10 @@
   <main class="content">
     <header class="toolbar">
       <h2 id="sectionTitle">Dashboard</h2>
-      <div id="status" class="status"></div>
+      <div class="toolbar-right">
+        <div id="authStatus" class="auth-status">Not Authenticated</div>
+        <div id="status" class="status"></div>
+      </div>
     </header>
 
     <section id="dashboard" class="section active">
@@ -196,20 +198,17 @@
       <div class="table-wrap">
         <table>
           <thead>
-           <thead>
-  <tr>
-    <th>ID</th>
-    <th>User</th>
-    <th>Email</th>
-    <th>Tx ID</th>
-    <th>Bank Name</th>
-    <th>Account Name</th>
-    <th>Account Number</th>
-    <th>Amount (USD)</th>
-    <th>Created</th>
-    <th>Actions</th>
-  </tr>
-</thead>
+            <tr>
+              <th>ID</th>
+              <th>User</th>
+              <th>Email</th>
+              <th>Tx ID</th>
+              <th>Bank Name</th>
+              <th>Account Name</th>
+              <th>Amount (USD)</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
           </thead>
           <tbody id="withdrawalsTbody"></tbody>
         </table>
@@ -350,6 +349,8 @@
             <option value="PAID">Paid</option>
             <option value="CANCELLED">Cancelled</option>
           </select>
+          <button id="switchToLocal" class="btn secondary" title="Use http://localhost:8000/api">Use Local API</button>
+          <button id="switchToProd" class="btn secondary" title="Use production API">Use Prod API</button>
         </div>
       </div>
       <div class="table-wrap">
@@ -370,67 +371,6 @@
           </thead>
           <tbody id="ordersTbody"></tbody>
         </table>
-      </div>
-    </section>
-
-    <!-- How It Works -->
-    <section id="howitworks" class="section">
-      <div class="section-head">
-        <h3>How It Works</h3>
-      </div>
-      <div style="max-width: 800px; margin: 0 auto; padding: 16px; line-height: 1.6;">
-        <h4>1) Daily Passive Income</h4>
-        <ul>
-          <li>Days 1–10: 0.4% daily</li>
-          <li>Days 11–20: 0.6% daily</li>
-          <li>Days 21–30: 0.8% daily</li>
-          <li>Days 31–60: 1.0% daily</li>
-          <li>Days 61–90: 1.3% daily</li>
-        </ul>
-        <p>Passive income starts once you make your first credited deposit (investment). Your balance then grows daily per the schedule above.</p>
-
-        <h4>Product Purchases</h4>
-        <ul>
-          <li>Logged-in users get a 10% discount on every product.</li>
-          <li>Guests can order without logging in (no discount).</li>
-          <li>At checkout, you’ll see the admin’s bank details and you’ll provide your Transaction ID, name, phone, and email.</li>
-        </ul>
-
-        <h4>2) Referral Earnings (per signup only)</h4>
-        <ul>
-          <li>Direct (Level 1): 6% of the signup payment at approval.</li>
-          <li>Indirect (Level 2): 3% of the signup payment at approval.</li>
-          <li>Indirect (Level 3): 1% of the signup payment at approval.</li>
-        </ul>
-        <p>You don’t need 10 directs to start earning. You will earn on your first few referrals too (1st, 2nd, etc.).</p>
-
-        <h4>3) Milestone Bonuses (Directs)</h4>
-        <p>Earn a one‑time bonus when your directs reach each milestone count. We wait until those directs have completed their first investment. The bonus is a percentage of the combined first‑investment amounts of those directs. After each payout, the counter resets to 0 and the next milestone starts.</p>
-        <ul>
-          <li>10 directs → 1% of the combined first investments</li>
-          <li>0–30 directs → when you reach 30, 3% of the combined first investments (then reset)</li>
-          <li>0–100 directs → when you reach 100, 5% of the combined first investments (then reset)</li>
-        </ul>
-
-        <h4>4) Global Payouts</h4>
-        <p><strong>How it works:</strong></p>
-        <ul>
-          <li>On every <strong>Monday</strong>, $0.50 USD is deducted from the joining payment of users who joined on that Monday and added to the global pool.</li>
-          <li>Then, the entire pool is distributed equally among all approved users on the same Monday.</li>
-          <li>Example: 20 new users joined on Monday → Pool = 20 × $0.50 = $10.00</li>
-          <li>If 100 approved users at payout: Each user gets $10 ÷ 100 = $0.10 USD ≈ 28 PKR</li>
-          <li>A <strong>20% withdrawal tax</strong> is applied, so the net amount is added to your wallet.</li>
-        </ul>
-        <p>Your share is automatically added to your wallet every Monday after the tax deduction.</p>
-
-        <h4>5) Withdrawals</h4>
-        <ul>
-          <li>Your daily earnings accumulate in your wallet.</li>
-          <li>Withdraw tax: 20% (net amount is credited to you).</li>
-        </ul>
-
-        <h4>6) Signup Deposit Note</h4>
-        <p>The initial deposit made at signup is recorded for your transaction history, but it is not counted as earnings and does not affect your ROI.</p>
       </div>
     </section>
   </main>
