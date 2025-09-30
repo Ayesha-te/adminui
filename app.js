@@ -226,6 +226,25 @@
     }
   };
 
+  // Helper function to safely parse JSON responses
+  const parseJsonSafely = async (response) => {
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        return await response.json();
+      } catch (e) {
+        throw new Error('Invalid JSON response from server');
+      }
+    } else {
+      // If it's not JSON, get the text and throw an error
+      const text = await response.text();
+      if (text.includes('<!DOCTYPE') || text.includes('<html>')) {
+        throw new Error('Server returned HTML instead of JSON. This usually indicates an authentication or server error.');
+      }
+      throw new Error(`Expected JSON response but got: ${contentType || 'unknown content type'}`);
+    }
+  };
+
   function authHeaders(headers={}){
     if(state.access){ 
       headers['Authorization'] = `Bearer ${state.access}`;
@@ -245,14 +264,20 @@
       const refreshSuccess = await refreshToken();
       if (refreshSuccess) {
         const retry = await fetch(url, { headers: authHeaders(), credentials: 'omit' });
-        if(!retry.ok) throw new Error(await retry.text());
-        return retry.json();
+        if(!retry.ok) {
+          const errorText = await retry.text();
+          throw new Error(`HTTP ${retry.status}: ${errorText}`);
+        }
+        return await parseJsonSafely(retry);
       } else {
         throw new Error('Authentication failed. Please login again.');
       }
     }
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    return await parseJsonSafely(res);
   };
 
   const post = async (url, body) => {
