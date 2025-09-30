@@ -29,14 +29,70 @@
     setTimeout(()=>{ el.style.display = 'none'; }, 2000);
   };
 
+  // Global functions for debugging
+  window.setApiBase = function(url) {
+    state.apiBase = normalizeApiBase(url);
+    try{ localStorage.setItem('adminApiBase', state.apiBase); }catch(_){ }
+    console.log('API Base manually set to:', state.apiBase);
+    toast('API Base updated to: ' + state.apiBase);
+  };
+
+  // Convenience helpers for local/prod switching
+  window.useLocalApi = function(port=8000){
+    const base = `http://localhost:${port}/api`;
+    window.setApiBase(base);
+    return base;
+  };
+  window.useProdApi = function(){
+    const base = 'https://ref-backend-fw8y.onrender.com/api';
+    window.setApiBase(base);
+    return base;
+  };
+  
+  window.getApiBase = function() {
+    console.log('Current API Base:', state.apiBase);
+    return state.apiBase;
+  };
+  
+  window.testApi = async function() {
+    try {
+      const response = await fetch(`${state.apiBase}/auth/token/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: '__probe__', password: '__probe__' })
+      });
+      console.log('API Test Result:', response.status, response.statusText, '->', state.apiBase);
+      toast(`API ${response.status} @ ${state.apiBase}`);
+      return response.status;
+    } catch (e) {
+      console.error('API Test Failed:', e);
+      toast('API test failed');
+      return false;
+    }
+  };
+
+  // Quick UI bindings for switching API base
+  document.addEventListener('DOMContentLoaded', ()=>{
+    const toLocal = document.getElementById('switchToLocal');
+    const toProd = document.getElementById('switchToProd');
+    if (toLocal) toLocal.addEventListener('click', ()=>{ window.useLocalApi(); window.testApi(); });
+    if (toProd) toProd.addEventListener('click', ()=>{ window.useProdApi(); window.testApi(); });
+  });
+
+  console.log('Admin UI Debug Commands:');
+  console.log('- setApiBase("http://192.168.100.141:8000/api") - Set API base manually');
+  console.log('- getApiBase() - Get current API base');
+  console.log('- testApi() - Test API connection');
+
   // Render current API base (no longer shown in UI)
   function showApiBase(){}
 
   async function detectApiBase(){
     // Prioritize production backend, then local development
-    const productionBackend = 'https://ref-backend-8arb.onrender.com/api';
+    const productionBackend = 'https://ref-backend-fw8y.onrender.com/api';
     const candidates = [
       productionBackend,  // Production backend (Render)
+      'http://192.168.100.141:8000/api',  // Network IP
       'http://127.0.0.1:8000/api',  // Local Django server
       'http://localhost:8000/api',   // Alternative local address
       location.origin.replace(/:\d+$/, '') + ':8000/api',  // Dynamic local Django
@@ -58,57 +114,125 @@
 
   // Initialize API base automatically without UI controls
   (async ()=>{
-    // Clear cached API base to force re-detection
-    try{ localStorage.removeItem('adminApiBase'); }catch(_){ }
+    // Respect stored API base if present (do not override every load)
+    let storedBase = null;
+    try { storedBase = localStorage.getItem('adminApiBase'); } catch(_){ }
+    if (storedBase) {
+      state.apiBase = normalizeApiBase(storedBase);
+      console.log('Using stored API base:', state.apiBase);
+      showApiBase();
+      // Validate tokens shortly after
+      setTimeout(async ()=>{ if (state.access || state.refresh) await validateStoredTokens(); }, 500);
+      return;
+    }
+
+    // Check if we're running in production (Vercel) - don't try localhost
+    const isProduction = window.location.hostname.includes('vercel.app') || 
+                        window.location.hostname.includes('netlify.app') ||
+                        window.location.protocol === 'https:';
     
-    // Try production backend first
-    const productionBase = 'https://ref-backend-8arb.onrender.com/api';
+    // Try local development first when not production
+    const productionBase = 'https://ref-backend-fw8y.onrender.com/api';
+
+    if (!isProduction) {
+      const localCandidates = [
+        'http://127.0.0.1:8000/api',
+        'http://localhost:8000/api',
+        location.origin.replace(/:\d+$/, '') + ':8000/api'
+      ];
+      for (const localBase of localCandidates) {
+        try {
+          console.log('Testing local backend:', localBase);
+          const testResponse = await fetch(`${localBase}/auth/token/`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: '__probe__', password: '__probe__' })
+          });
+          if ([400, 401].includes(testResponse.status)) {
+            state.apiBase = localBase;
+            try{ localStorage.setItem('adminApiBase', localBase); }catch(_){ }
+            console.log('✅ Admin UI connected to LOCAL backend:', localBase);
+            showApiBase();
+            return;
+          }
+        } catch (e) {
+          console.log(`Local server ${localBase} not available:`, e.message);
+        }
+      }
+    }
+
+    // Fallback: try production
+    console.log('Testing production backend:', productionBase);
     try {
       const testResponse = await fetch(`${productionBase}/auth/token/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: '__probe__', password: '__probe__' })
       });
+      console.log('Production backend response:', testResponse.status);
       if ([400, 401].includes(testResponse.status)) {
         state.apiBase = productionBase;
         try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
-        console.log('Admin UI connected to PRODUCTION backend:', productionBase);
+        console.log('✅ Admin UI connected to PRODUCTION backend:', productionBase);
         showApiBase();
         return;
       }
     } catch (e) {
-      console.log('Production backend not available, trying local development...');
-    }
-    
-    // Fallback to local development server
-    const localBase = 'http://127.0.0.1:8000/api';
-    try {
-      const testResponse = await fetch(`${localBase}/auth/token/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: '__probe__', password: '__probe__' })
-      });
-      if ([400, 401].includes(testResponse.status)) {
-        state.apiBase = localBase;
-        try{ localStorage.setItem('adminApiBase', localBase); }catch(_){ }
-        console.log('Admin UI connected to LOCAL server:', localBase);
+      console.error('❌ Production backend connection failed:', e.message);
+      if (isProduction) {
+        setStatus('❌ Backend connection failed. CORS or network issue detected.');
+        setAuthStatus(false, 'Backend unavailable');
+        state.apiBase = productionBase;
+        try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
         showApiBase();
         return;
       }
-    } catch (e) {
-      console.log('Local server not available, using auto-detection...');
+      console.log('Production backend not available.');
     }
     
-    const base = normalizeApiBase(await detectApiBase());
-    try{ localStorage.setItem('adminApiBase', base); }catch(_){ }
-    state.apiBase = base; showApiBase();
-    console.log('Admin UI connected to:', base);
+
+    
+    // Validate stored tokens after API base is set
+    setTimeout(async () => {
+      if (state.access || state.refresh) {
+        console.log('Validating stored authentication tokens...');
+        await validateStoredTokens();
+      }
+    }, 1000);
   })();
 
   const setStatus = (msg) => $('#status').textContent = msg || '';
+  
+  const setAuthStatus = (isAuthenticated, message = '') => {
+    const authStatusEl = $('#authStatus');
+    const loginBtn = $('#loginBtn');
+    const loginForm = $('#loginForm');
+    
+    if (authStatusEl) {
+      if (isAuthenticated) {
+        authStatusEl.textContent = message || 'Authenticated ✓';
+        authStatusEl.style.color = '#28a745';
+      } else {
+        authStatusEl.textContent = message || 'Not Authenticated';
+        authStatusEl.style.color = '#dc3545';
+      }
+    }
+    
+    if (loginBtn) {
+      loginBtn.textContent = isAuthenticated ? 'Logout' : 'Login';
+    }
+    
+    if (loginForm) {
+      loginForm.style.display = 'none';
+    }
+  };
 
   function authHeaders(headers={}){
-    if(state.access){ headers['Authorization'] = `Bearer ${state.access}`; }
+    if(state.access){ 
+      headers['Authorization'] = `Bearer ${state.access}`;
+      console.log('Adding Authorization header with token:', state.access.substring(0, 20) + '...');
+    } else {
+      console.log('No access token available for Authorization header');
+    }
     return headers;
   }
 
@@ -118,10 +242,14 @@
     setStatus('');
     if (res.status === 401 && state.refresh) {
       // attempt refresh and retry once
-      await refreshToken();
-      const retry = await fetch(url, { headers: authHeaders(), credentials: 'omit' });
-      if(!retry.ok) throw new Error(await retry.text());
-      return retry.json();
+      const refreshSuccess = await refreshToken();
+      if (refreshSuccess) {
+        const retry = await fetch(url, { headers: authHeaders(), credentials: 'omit' });
+        if(!retry.ok) throw new Error(await retry.text());
+        return retry.json();
+      } else {
+        throw new Error('Authentication failed. Please login again.');
+      }
     }
     if (!res.ok) throw new Error(await res.text());
     return res.json();
@@ -137,15 +265,19 @@
     });
     setStatus('');
     if (res.status === 401 && state.refresh) {
-      await refreshToken();
-      const retry = await fetch(url, {
-        method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        credentials: 'omit',
-        body: JSON.stringify(body||{})
-      });
-      if(!retry.ok) throw new Error(await retry.text());
-      return retry.json().catch(()=>({ ok:true }));
+      const refreshSuccess = await refreshToken();
+      if (refreshSuccess) {
+        const retry = await fetch(url, {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          credentials: 'omit',
+          body: JSON.stringify(body||{})
+        });
+        if(!retry.ok) throw new Error(await retry.text());
+        return retry.json().catch(()=>({ ok:true }));
+      } else {
+        throw new Error('Authentication failed. Please login again.');
+      }
     }
     if (!res.ok) throw new Error(await res.text());
     return res.json().catch(()=>({ ok:true }));
@@ -161,29 +293,35 @@
     });
     setStatus('');
     if (res.status === 401 && state.refresh) {
-      await refreshToken();
-      const retry = await fetch(url, {
-        method: 'PATCH',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        credentials: 'omit',
-        body: JSON.stringify(body||{})
-      });
-      if(!retry.ok) throw new Error(await retry.text());
-      return retry.json().catch(()=>({ ok:true }));
+      const refreshSuccess = await refreshToken();
+      if (refreshSuccess) {
+        const retry = await fetch(url, {
+          method: 'PATCH',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          credentials: 'omit',
+          body: JSON.stringify(body||{})
+        });
+        if(!retry.ok) throw new Error(await retry.text());
+        return retry.json().catch(()=>({ ok:true }));
+      } else {
+        throw new Error('Authentication failed. Please login again.');
+      }
     }
     if (!res.ok) throw new Error(await res.text());
     return res.json().catch(()=>({ ok:true }));
   };
 
   async function login(username, password){
+    console.log('Attempting login with:', username, 'to API:', state.apiBase);
     const res = await fetch(`${state.apiBase}/auth/token/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
     });
+    console.log('Login response status:', res.status);
     if(!res.ok){
       let detail = 'Login failed';
-      try { const data = await res.json(); detail = data?.detail || detail; } catch(_){ try{ detail = await res.text() || detail; }catch(__){}
+      try { const data = await res.json(); detail = data?.detail || detail; console.log('Login error data:', data); } catch(_){ try{ detail = await res.text() || detail; console.log('Login error text:', detail); }catch(__){}
       }
       throw new Error(`[${res.status}] ${detail}`);
     }
@@ -193,34 +331,173 @@
       localStorage.setItem('admin_access', state.access || '');
       localStorage.setItem('admin_refresh', state.refresh || '');
     } catch {}
+    setAuthStatus(true, 'Logged in ✓');
     toast('Logged in');
   }
 
   async function refreshToken(){
-    if(!state.refresh) return;
-    const data = await fetch(`${state.apiBase}/auth/token/refresh/`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh: state.refresh })
-    }).then(r=>{ if(!r.ok) throw new Error('Refresh failed'); return r.json(); });
-    state.access = data.access;
-    if (data.refresh) { state.refresh = data.refresh; }
+    if(!state.refresh) {
+      console.log('No refresh token available');
+      return false;
+    }
+    
     try {
-      localStorage.setItem('admin_access', state.access || '');
-      if (state.refresh) localStorage.setItem('admin_refresh', state.refresh);
-    } catch {}
+      const res = await fetch(`${state.apiBase}/auth/token/refresh/`, {
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh: state.refresh })
+      });
+      
+      if (!res.ok) {
+        console.log('Token refresh failed:', res.status, res.statusText);
+        // Clear invalid tokens
+        logout();
+        toast('Session expired. Please login again.');
+        return false;
+      }
+      
+      const data = await res.json();
+      state.access = data.access;
+      if (data.refresh) { 
+        state.refresh = data.refresh; 
+      }
+      
+      try {
+        localStorage.setItem('admin_access', state.access || '');
+        if (state.refresh) localStorage.setItem('admin_refresh', state.refresh);
+      } catch(e) {
+        console.error('Failed to save tokens to localStorage:', e);
+      }
+      
+      console.log('Token refreshed successfully');
+      setAuthStatus(true, 'Token refreshed ✓');
+      return true;
+    } catch (error) {
+      console.error('Token refresh error:', error);
+      logout();
+      toast('Session expired. Please login again.');
+      return false;
+    }
   }
 
   function logout(){
     state.access = null; state.refresh = null;
     try { localStorage.removeItem('admin_access'); localStorage.removeItem('admin_refresh'); } catch {}
+    setAuthStatus(false, 'Logged out');
     toast('Logged out');
+  }
+
+  // Validate stored tokens on app load
+  async function validateStoredTokens() {
+    if (!state.access) return false;
+    
+    try {
+      // Test the access token with a simple API call
+      const res = await fetch(`${state.apiBase}/accounts/admin/users/?page=1&page_size=1`, {
+        headers: authHeaders(),
+        credentials: 'omit'
+      });
+      
+      if (res.ok) {
+        console.log('Stored access token is valid');
+        setAuthStatus(true, 'Token validated ✓');
+        return true;
+      } else if (res.status === 401 && state.refresh) {
+        console.log('Access token expired, attempting refresh...');
+        setAuthStatus(false, 'Token expired, refreshing...');
+        return await refreshToken();
+      } else {
+        console.log('Token validation failed, clearing tokens');
+        setAuthStatus(false, 'Token invalid');
+        logout();
+        return false;
+      }
+    } catch (error) {
+      console.error('Token validation error:', error);
+      setAuthStatus(false, 'Connection error');
+      logout();
+      return false;
+    }
+  }
+
+  // Debug helper function - call from browser console
+  window.debugAuth = function() {
+    console.log('=== AUTHENTICATION DEBUG INFO ===');
+    console.log('API Base:', state.apiBase);
+    console.log('Access Token:', state.access ? state.access.substring(0, 50) + '...' : 'None');
+    console.log('Refresh Token:', state.refresh ? state.refresh.substring(0, 50) + '...' : 'None');
+    console.log('LocalStorage Access:', localStorage.getItem('admin_access') ? 'Present' : 'Missing');
+    console.log('LocalStorage Refresh:', localStorage.getItem('admin_refresh') ? 'Present' : 'Missing');
+    
+    // Test a simple API call
+    if (state.access) {
+      console.log('Testing API call...');
+      fetch(`${state.apiBase}/accounts/admin/users/?page=1&page_size=1`, {
+        headers: authHeaders(),
+        credentials: 'omit'
+      }).then(res => {
+        console.log('Test API Response Status:', res.status);
+        if (res.status === 401) {
+          console.log('❌ 401 Unauthorized - Token is invalid or expired');
+        } else if (res.status === 403) {
+          console.log('❌ 403 Forbidden - User lacks admin permissions');
+        } else if (res.ok) {
+          console.log('✅ API call successful - Authentication working');
+        } else {
+          console.log('⚠️ Unexpected status:', res.status);
+        }
+      }).catch(err => {
+        console.log('❌ Network error:', err.message);
+      });
+    } else {
+      console.log('❌ No access token available');
+    }
+    console.log('=====================================');
+  };
+
+  // Enhanced error handling for API responses
+  function handleApiError(error, url) {
+    console.error('API Error:', error);
+    
+    // Check for CORS errors
+    if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+      setAuthStatus(false, 'Connection failed');
+      toast('❌ Connection failed. Check if backend is running and CORS is configured.');
+      setStatus('CORS or network error - check backend configuration');
+      return;
+    }
+    
+    if (error.message.includes('Authentication failed')) {
+      setAuthStatus(false, 'Auth failed');
+      toast('Please login again');
+      return;
+    }
+    
+    // Check for specific admin permission errors
+    if (url.includes('/admin/') && error.message.includes('permission')) {
+      toast('Admin access required. Check your user role.');
+      setAuthStatus(false, 'No admin access');
+      return;
+    }
+    
+    // Check for token-related errors
+    if (error.message.includes('Invalid token') || error.message.includes('Token has expired')) {
+      setAuthStatus(false, 'Token invalid');
+      toast('Session expired. Please login again.');
+      logout();
+      return;
+    }
+    
+    // Generic error handling
+    toast(`Error: ${error.message}`);
   }
 
   // Navigation
   $$('.nav-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const id = btn.dataset.section;
-      $('#sectionTitle').textContent = btn.textContent; // fix: use single element selector
+      const headerTitle = $('#sectionTitle') || $('#pageTitle');
+      if (headerTitle) headerTitle.textContent = btn.textContent;
       $$('.section').forEach(s => s.classList.remove('active'));
       $('#'+id).classList.add('active');
       // Auto-load when switching sections (only if logged in when admin endpoints)
@@ -239,17 +516,62 @@
   });
 
   // Login bindings
-  $('#loginBtn').addEventListener('click', async ()=>{
-    try{
-      const u = $('#loginUsername').value.trim();
-      const p = $('#loginPassword').value;
-      if(!u||!p){ toast('Enter username and password'); return; }
-      await login(u,p);
-      // On login, refresh all sections
-      loadDashboard(); loadUsers(); loadPendingUsers(); loadDeposits(); loadWithdrawals(); loadReferrals(); loadProofs(); loadProducts(); loadGlobalPool(); loadSystemOverview();
-    }catch(e){ console.error(e); toast(String(e?.message || e || 'Login failed')); }
-  });
-  $('#logoutBtn').addEventListener('click', ()=>{ logout(); });
+  const loginBtn = $('#loginBtn');
+  const loginForm = $('#loginForm');
+  const usernameInput = $('#username');
+  const passwordInput = $('#password');
+  const doLoginBtn = $('#doLogin');
+  
+  if (loginBtn) {
+    loginBtn.addEventListener('click', ()=>{
+      // Handle logout if already logged in
+      if(loginBtn.textContent === 'Logout'){
+        logout();
+        loginBtn.textContent = 'Login';
+        if (loginForm) loginForm.style.display = 'none';
+        return;
+      }
+      
+      // Show/hide login form
+      if(loginForm){
+        if(loginForm.style.display === 'none'){
+          loginForm.style.display = 'flex';
+          loginBtn.textContent = 'Cancel';
+          if (usernameInput) usernameInput.focus();
+        } else {
+          loginForm.style.display = 'none';
+          loginBtn.textContent = 'Login';
+        }
+      }
+    });
+  }
+  
+  if (doLoginBtn) {
+    doLoginBtn.addEventListener('click', async ()=>{
+      try{
+        const u = usernameInput ? usernameInput.value.trim() : '';
+        const p = passwordInput ? passwordInput.value : '';
+        if(!u||!p){ toast('Enter username and password'); return; }
+        await login(u,p);
+        if (loginForm) loginForm.style.display = 'none';
+        if (loginBtn) loginBtn.textContent = 'Logout';
+        // On login, refresh all sections
+        loadDashboard(); loadUsers(); loadPendingUsers(); loadDeposits(); loadWithdrawals(); loadReferrals(); loadProofs(); loadProducts(); loadGlobalPool(); loadSystemOverview();
+      }catch(e){ handleApiError(e, 'login'); }
+    });
+  }
+  
+  // Handle Enter key in login inputs
+  if (usernameInput) {
+    usernameInput.addEventListener('keypress', (e) => {
+      if(e.key === 'Enter' && passwordInput) passwordInput.focus();
+    });
+  }
+  if (passwordInput) {
+    passwordInput.addEventListener('keypress', (e) => {
+      if(e.key === 'Enter' && doLoginBtn) doLoginBtn.click();
+    });
+  }
 
   // Dashboard stats loaders
   async function loadDashboard(){
@@ -266,8 +588,7 @@
       const totalRefs = referralSummary?.total ?? (referralSummary?.total_referrals ?? '0');
       $('#statTotalReferrals').textContent = totalRefs;
     } catch (e) {
-      console.error(e);
-      toast('Failed to load dashboard');
+      handleApiError(e, 'dashboard');
     }
   }
 
@@ -324,9 +645,12 @@
       // pagination info
       const total = data.count || 0;
       const totalPages = Math.max(1, Math.ceil(total / usersState.pageSize));
-      $('#usersPageInfo').textContent = `Page ${usersState.page} of ${totalPages} (${total} users)`;
-      $('#usersPrev').disabled = usersState.page <= 1;
-      $('#usersNext').disabled = usersState.page >= totalPages;
+      const pageInfoEl = $('#usersPageInfo');
+      const prevEl = $('#usersPrev');
+      const nextEl = $('#usersNext');
+      if (pageInfoEl) pageInfoEl.textContent = `Page ${usersState.page} of ${totalPages} (${total} users)`;
+      if (prevEl) prevEl.disabled = usersState.page <= 1;
+      if (nextEl) nextEl.disabled = usersState.page >= totalPages;
     }catch(e){
       console.error(e); tbody.innerHTML = '<tr><td colspan="16" class="muted">Failed to load</td></tr>';
     }
@@ -364,13 +688,17 @@
 
   // User actions for main users table
   $('#usersTbody').addEventListener('click', async (e)=>{
+    console.log('User table click detected:', e.target);
     const btn = e.target.closest('button');
     if(!btn) return;
     const id = btn.dataset.id;
     const action = btn.dataset.action;
+    console.log('User action:', action, 'ID:', id, 'API Base:', state.apiBase);
     try{
       if(action === 'reject'){
-        await post(`${state.apiBase}/accounts/admin/reject/${id}/`);
+        console.log('Attempting to reject user:', id);
+        const response = await post(`${state.apiBase}/accounts/admin/reject/${id}/`);
+        console.log('Reject response:', response);
         toast('User rejected');
       } else if(action === 'activate'){
         await post(`${state.apiBase}/accounts/admin/activate/${id}/`);
@@ -381,7 +709,10 @@
       }
       await loadUsers();
       await loadDashboard();
-    }catch(err){ console.error(err); toast('Action failed'); }
+    }catch(err){ 
+      console.error('User action error:', err); 
+      toast('Action failed: ' + (err.message || 'Unknown error')); 
+    }
   });
 
   // Users (pending) list and actions
@@ -407,8 +738,8 @@
           <td>${proofLink}</td>
           <td>${u.submitted_at ? new Date(u.submitted_at).toLocaleString() : '-'}</td>
           <td>
-            <button class="btn ok" data-action="approve" data-id="${u.id}">Approve</button>
-            <button class="btn secondary" data-action="reject" data-id="${u.id}">Reject</button>
+            <button class="btn ok" data-action="approve" data-proof-id="${u.signup_proof_id || ''}" data-id="${u.id}">Approve</button>
+            <button class="btn secondary" data-action="reject" data-proof-id="${u.signup_proof_id || ''}" data-id="${u.id}">Reject</button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -419,71 +750,43 @@
   }
 
   $('#pendingUsersTbody').addEventListener('click', async (e)=>{
+    console.log('Pending users table click detected:', e.target);
     const btn = e.target.closest('button');
     if(!btn) return;
-    const id = btn.dataset.id;
+    const id = btn.dataset.id; // user id
+    const proofId = btn.dataset.proofId; // signup proof id
+    const action = btn.dataset.action;
+    console.log('Pending user action:', action, 'UserID:', id, 'ProofID:', proofId, 'API Base:', state.apiBase);
     try{
-      if(btn.dataset.action==='approve'){
-        await post(`${state.apiBase}/accounts/admin/approve/${id}/`);
+      if(action === 'approve'){
+        if (proofId) {
+          console.log('Approving via signup-proof action for proof:', proofId);
+          await post(`${state.apiBase}/accounts/admin/signup-proof/action/${proofId}/`, { action: 'APPROVE' });
+        } else {
+          console.log('No proofId available; falling back to user approve:', id);
+          await post(`${state.apiBase}/accounts/admin/approve/${id}/`);
+        }
         toast('User approved');
-      }else if(btn.dataset.action==='reject'){
-        await post(`${state.apiBase}/accounts/admin/reject/${id}/`);
+      } else if(action === 'reject'){
+        if (proofId) {
+          console.log('Rejecting via signup-proof action for proof:', proofId);
+          await post(`${state.apiBase}/accounts/admin/signup-proof/action/${proofId}/`, { action: 'REJECT' });
+        } else {
+          console.log('No proofId available; falling back to user reject:', id);
+          const response = await post(`${state.apiBase}/accounts/admin/reject/${id}/`);
+          console.log('Reject response (fallback):', response);
+        }
         toast('User rejected');
       }
       await loadPendingUsers();
       await loadDashboard();
-    }catch(err){ console.error(err); toast('Action failed'); }
-  });
-
-  // Withdrawals
-  async function loadWithdrawals(){
-    const tbody = $('#withdrawalsTbody');
-    tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
-    try{
-      const rows = await get(`${state.apiBase}/withdrawals/admin/pending/`);
-      if(!rows.length){ 
-        tbody.innerHTML = '<tr><td colspan="9" class="muted">No pending withdrawals</td></tr>'; 
-        return; 
-      }
-      tbody.innerHTML = '';
-      rows.forEach(w=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${w.id}</td>
-          <td>${escapeHtml(w.user?.username || w.username || '-')}</td>
-          <td>${escapeHtml(w.user?.email || w.email || '-')}</td>
-          <td>${escapeHtml(w.tx_id || '-')}</td>
-          <td>${escapeHtml(w.bank_name || '-')}</td>
-          <td>${escapeHtml(w.account_name || '-')}</td>
-          <td>${Number(w.amount_usd||0).toFixed(2)}</td>
-          <td>${w.created_at ? new Date(w.created_at).toLocaleString() : '-'}</td>
-          <td>
-            <button class="btn ok" data-action="approve" data-id="${w.id}">Approve</button>
-            <button class="btn" data-action="paid" data-id="${w.id}">Mark Paid</button>
-            <button class="btn secondary" data-action="reject" data-id="${w.id}">Reject</button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }catch(e){ 
-      console.error(e); 
-      tbody.innerHTML = '<tr><td colspan="9" class="muted">Failed to load</td></tr>'; 
+    }catch(err){ 
+      console.error('Pending user action error:', err); 
+      toast('Action failed: ' + (err.message || 'Unknown error')); 
     }
-  }
-
-  $('#withdrawalsTbody').addEventListener('click', async (e)=>{
-    const btn = e.target.closest('button'); 
-    if(!btn) return; 
-    const id = btn.dataset.id;
-    const action = btn.dataset.action;
-    try{
-      let backendAction = action === 'approve' ? 'APPROVE' : action === 'reject' ? 'REJECT' : action === 'paid' ? 'PAID' : action;
-      await post(`${state.apiBase}/withdrawals/admin/action/${id}/`, { action: backendAction });
-      toast('Withdrawal updated');
-      await loadWithdrawals();
-      await loadDashboard();
-    }catch(err){ console.error(err); toast('Action failed'); }
   });
+
+  // Withdrawals - function moved below to avoid duplicates
 
   // Deposits
   async function loadDeposits(){
@@ -655,47 +958,57 @@
   // Withdrawals
   async function loadWithdrawals(){
     const tbody = $('#withdrawalsTbody');
-    tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>'; // 1. Update colspan
+    tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
     try{
       const rows = await get(`${state.apiBase}/withdrawals/admin/pending/`);
-      if(!rows.length){ tbody.innerHTML = '<tr><td colspan="9" class="muted">No pending</td></tr>'; return; } // 2. Update colspan
+      console.log('Withdrawals data loaded:', rows);
+      if(!rows.length){ 
+        tbody.innerHTML = '<tr><td colspan="9" class="muted">No pending withdrawals</td></tr>'; 
+        return; 
+      }
       tbody.innerHTML = '';
       rows.forEach(w=>{
+        console.log('Processing withdrawal:', w.id, 'TX ID:', w.tx_id);
         const tr = document.createElement('tr');
-        // 3. Get account number from account_details or fallback
-        const accountNumber = w.account_details?.account_number || w.account_number || '-';
         tr.innerHTML = `
           <td>${w.id}</td>
-          <td>${escapeHtml(w.user?.username || '-')}</td>
-          <td>${escapeHtml(w.user?.email || '-')}</td>
+          <td>${escapeHtml(w.username || '-')}</td>
+          <td>${escapeHtml(w.email || '-')}</td>
           <td>${escapeHtml(w.tx_id || '-')}</td>
           <td>${escapeHtml(w.bank_name || '-')}</td>
           <td>${escapeHtml(w.account_name || '-')}</td>
-          <td>${escapeHtml(accountNumber)}</td> <!-- Account Number column added here -->
-          <td>${Number(w.amount_usd||0).toFixed(2)}</td>
-          <td>${escapeHtml(w.created_at || '-')}</td>
+          <td>$${Number(w.amount_usd||0).toFixed(2)}</td>
+          <td>${w.created_at ? new Date(w.created_at).toLocaleString() : '-'}</td>
           <td>
             <button class="btn ok" data-action="approve" data-id="${w.id}">Approve</button>
+            <button class="btn" data-action="paid" data-id="${w.id}">Mark Paid</button>
             <button class="btn secondary" data-action="reject" data-id="${w.id}">Reject</button>
           </td>
         `;
         tbody.appendChild(tr);
       });
     }catch(e){ 
-      console.error(e); 
-      tbody.innerHTML = '<tr><td colspan="9" class="muted">Failed to load</td></tr>'; // 4. Update colspan
+      console.error('loadWithdrawals error:', e); 
+      handleApiError(e, `${state.apiBase}/withdrawals/admin/pending/`);
+      tbody.innerHTML = '<tr><td colspan="9" class="muted">❌ Failed to load - Check connection</td></tr>'; 
     }
-}
+  }
 
   $('#withdrawalsTbody').addEventListener('click', async (e)=>{
-    const btn = e.target.closest('button'); if(!btn) return; const id = btn.dataset.id;
+    const btn = e.target.closest('button'); 
+    if(!btn) return; 
+    const id = btn.dataset.id;
     const action = btn.dataset.action;
     try{
-      await post(`${state.apiBase}/withdrawals/admin/action/${id}/`, { action });
-      toast('Withdrawal updated');
+      let backendAction = action === 'approve' ? 'APPROVE' : action === 'reject' ? 'REJECT' : action === 'paid' ? 'PAID' : action.toUpperCase();
+      await post(`${state.apiBase}/withdrawals/admin/action/${id}/`, { action: backendAction });
+      toast(`Withdrawal ${action}d successfully`);
       await loadWithdrawals();
       await loadDashboard();
-    }catch(err){ console.error(err); toast('Action failed'); }
+    }catch(err){ 
+      console.error('Withdrawal action error:', err); 
+      toast(`Failed to ${action} withdrawal`); 
+    }
   });
 
   // System overview
