@@ -318,22 +318,16 @@
       'Content-Type': 'application/json',
       ...headers
     };
-
-    // Prefer the in-memory access token, but fall back to tokens stored in localStorage
-    const lsToken = (typeof localStorage !== 'undefined') ? (localStorage.getItem('admin_access') || localStorage.getItem('token')) : null;
-    const token = (state.access && state.access.trim()) ? state.access : (lsToken || null);
-
-    if (token) {
-      baseHeaders['Authorization'] = `Bearer ${token}`;
-      const source = (state.access && state.access.trim()) ? 'state' : (lsToken ? 'localStorage' : 'unknown');
-      console.log(`🔑 Adding Authorization header with token (source: ${source}):`, token.substring(0, 20) + '...');
+    
+    if(state.access && state.access.trim()){ 
+      baseHeaders['Authorization'] = `Bearer ${state.access}`;
+      console.log('🔑 Adding Authorization header with token:', state.access.substring(0, 20) + '...');
       console.log('🔍 Full headers being sent:', baseHeaders);
     } else {
       console.log('❌ No access token available for Authorization header');
       console.log('🔍 Token in state:', state.access ? 'exists' : 'missing');
-      console.log('🔍 Token in localStorage:', lsToken ? 'exists' : 'missing');
+      console.log('🔍 Token in localStorage (admin_access/token):', localStorage.getItem('admin_access') ? 'admin_access' : (localStorage.getItem('token') ? 'token' : 'missing'));
     }
-
     return baseHeaders;
   }
 
