@@ -56,9 +56,18 @@
   // Initialize state with tokens from localStorage if available
   const state = {
     apiBase: defaultApiBase,
-    access: (typeof localStorage !== 'undefined' && localStorage.getItem('admin_access')) || null,
+    // support both admin_access (existing) and token (common JWT key)
+    access: (typeof localStorage !== 'undefined' && (localStorage.getItem('admin_access') || localStorage.getItem('token'))) || null,
     refresh: (typeof localStorage !== 'undefined' && localStorage.getItem('admin_refresh')) || null,
   };
+
+  // If axios is present on the page (some integrations), set default Authorization
+  try {
+    if (window.axios && typeof window.axios === 'function') {
+      const tokenForAxios = localStorage.getItem('token') || localStorage.getItem('admin_access');
+      if (tokenForAxios) window.axios.defaults.headers.common['Authorization'] = `Bearer ${tokenForAxios}`;
+    }
+  } catch (e) { /* ignore */ }
 
   const toast = (msg) => {
     const el = $('#toast');
@@ -309,30 +318,16 @@
       'Content-Type': 'application/json',
       ...headers
     };
-
-    // If in-memory token is missing, try to load from localStorage (helps when state wasn't initialized)
-    try {
-      if ((!state.access || !String(state.access).trim()) && typeof localStorage !== 'undefined') {
-        const stored = localStorage.getItem('admin_access');
-        if (stored) {
-          state.access = stored;
-          console.log('🔁 Loaded access token from localStorage into state');
-        }
-      }
-    } catch (e) {
-      // ignore localStorage errors
-    }
-
-    if (state.access && String(state.access).trim()) {
-      const token = String(state.access).trim();
-      baseHeaders['Authorization'] = `Bearer ${token}`;
-      console.log('🔑 Adding Authorization header with token:', token.substring(0, 20) + '...');
+    
+    if(state.access && state.access.trim()){ 
+      baseHeaders['Authorization'] = `Bearer ${state.access}`;
+      console.log('🔑 Adding Authorization header with token:', state.access.substring(0, 20) + '...');
       console.log('🔍 Full headers being sent:', baseHeaders);
     } else {
       console.log('❌ No access token available for Authorization header');
-      try { console.log('🔍 Token in localStorage:', localStorage.getItem('admin_access') ? 'exists' : 'missing'); } catch(_){}
+      console.log('🔍 Token in state:', state.access ? 'exists' : 'missing');
+      console.log('🔍 Token in localStorage (admin_access/token):', localStorage.getItem('admin_access') ? 'admin_access' : (localStorage.getItem('token') ? 'token' : 'missing'));
     }
-
     return baseHeaders;
   }
 
@@ -345,9 +340,11 @@
     const headers = authHeaders();
     console.log('🔍 Request headers:', headers);
     
+    // Use credentials: 'include' for session-based auth (no token), otherwise omit for JWT
+    const creds = state.access ? 'omit' : 'include';
     const res = await fetch(url, { 
       headers,
-      credentials: 'omit',
+      credentials: creds,
       method: 'GET'
     });
     
@@ -362,9 +359,10 @@
       if (refreshSuccess) {
         console.log('✅ Token refresh successful, retrying request...');
         const retryHeaders = authHeaders();
+        const retryCreds = state.access ? 'omit' : 'include';
         const retry = await fetch(url, { 
           headers: retryHeaders, 
-          credentials: 'omit',
+          credentials: retryCreds,
           method: 'GET'
         });
         if(!retry.ok) {
@@ -387,20 +385,22 @@
 
   const post = async (url, body) => {
     setStatus('Working...');
+    const creds = state.access ? 'omit' : 'include';
     const res = await fetch(url, {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
-      credentials: 'omit',
+      credentials: creds,
       body: JSON.stringify(body||{})
     });
     setStatus('');
     if (res.status === 401 && state.refresh) {
       const refreshSuccess = await refreshToken();
       if (refreshSuccess) {
+        const retryCreds = state.access ? 'omit' : 'include';
         const retry = await fetch(url, {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
-          credentials: 'omit',
+          credentials: retryCreds,
           body: JSON.stringify(body||{})
         });
         if(!retry.ok) {
@@ -421,20 +421,22 @@
 
   const patch = async (url, body) => {
     setStatus('Working...');
+    const creds = state.access ? 'omit' : 'include';
     const res = await fetch(url, {
       method: 'PATCH',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
-      credentials: 'omit',
+      credentials: creds,
       body: JSON.stringify(body||{})
     });
     setStatus('');
     if (res.status === 401 && state.refresh) {
       const refreshSuccess = await refreshToken();
       if (refreshSuccess) {
+        const retryCreds = state.access ? 'omit' : 'include';
         const retry = await fetch(url, {
           method: 'PATCH',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
-          credentials: 'omit',
+          credentials: retryCreds,
           body: JSON.stringify(body||{})
         });
         if(!retry.ok) {
@@ -478,8 +480,19 @@
     const data = await parseJsonSafely(res);
     state.access = data.access; state.refresh = data.refresh;
     try {
-      localStorage.setItem('admin_access', state.access || '');
-      localStorage.setItem('admin_refresh', state.refresh || '');
+      // Persist tokens for both this admin UI and any other frontend code expecting 'token'
+      if (state.access) {
+        localStorage.setItem('admin_access', state.access);
+        try{ localStorage.setItem('token', state.access); } catch(_){}
+      } else {
+        localStorage.removeItem('admin_access');
+        try{ localStorage.removeItem('token'); } catch(_){}
+      }
+      if (state.refresh) {
+        localStorage.setItem('admin_refresh', state.refresh);
+      } else {
+        localStorage.removeItem('admin_refresh');
+      }
     } catch {}
     setAuthStatus(true, 'Logged in ✓');
     toast('Logged in');
