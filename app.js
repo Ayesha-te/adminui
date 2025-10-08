@@ -30,7 +30,9 @@
       toast('✅ Logged in successfully!');
       // Reload the dashboard
       setTimeout(() => {
-        if (typeof loadDashboard === 'function') loadDashboard();
+        if (typeof loadAllDashboardData === 'function') {
+          loadAllDashboardData();
+        }
       }, 500);
     } catch (error) {
       console.log('❌ Manual login failed:', error.message);
@@ -159,6 +161,38 @@
     return candidates[0];
   }
 
+  // Helper function to perform authentication check
+  const performAuthCheck = () => {
+    console.log('🔍 Checking authentication state...');
+    console.log('🔍 Access token exists:', !!state.access);
+    console.log('🔍 Refresh token exists:', !!state.refresh);
+    
+    if (state.access || state.refresh) {
+      console.log('✅ Found stored tokens, validating...');
+      setTimeout(() => validateStoredTokens(), 100);
+    } else {
+      console.log('❌ No stored tokens found, attempting auto-login...');
+      setTimeout(async () => {
+        try {
+          // Auto-login with Ahmad/12345 for production
+          await login('Ahmad', '12345');
+          console.log('✅ Auto-login successful');
+          toast('✅ Auto-login successful!');
+          // Load dashboard after successful login
+          setTimeout(() => {
+            if (typeof loadAllDashboardData === 'function') {
+              loadAllDashboardData();
+            }
+          }, 500);
+        } catch (error) {
+          console.log('❌ Auto-login failed:', error.message);
+          setAuthStatus(false, 'Auto-login failed - use quickLogin()');
+          toast('❌ Auto-login failed. Try: quickLogin()');
+        }
+      }, 100);
+    }
+  };
+
   // Initialize API base automatically without UI controls
   (async ()=>{
     // Respect stored API base if present (do not override every load)
@@ -168,8 +202,8 @@
       state.apiBase = normalizeApiBase(storedBase);
       console.log('Using stored API base:', state.apiBase);
       showApiBase();
-      // Validate tokens shortly after
-      setTimeout(async ()=>{ if (state.access || state.refresh) await validateStoredTokens(); }, 500);
+      // Perform authentication check after API base is set
+      performAuthCheck();
       return;
     }
 
@@ -199,6 +233,8 @@
             try{ localStorage.setItem('adminApiBase', localBase); }catch(_){ }
             console.log('✅ Admin UI connected to LOCAL backend:', localBase);
             showApiBase();
+            // Perform authentication check after API base is set
+            performAuthCheck();
             return;
           }
         } catch (e) {
@@ -221,6 +257,8 @@
         try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
         console.log('✅ Admin UI connected to PRODUCTION backend:', productionBase);
         showApiBase();
+        // Perform authentication check after API base is set
+        performAuthCheck();
         return;
       }
     } catch (e) {
@@ -231,40 +269,15 @@
         state.apiBase = productionBase;
         try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
         showApiBase();
+        // Still try authentication check even if backend connection failed
+        performAuthCheck();
         return;
       }
       console.log('Production backend not available.');
     }
     
-
-    
-    // Immediate authentication check
-    console.log('🔍 Checking authentication state...');
-    console.log('🔍 Access token exists:', !!state.access);
-    console.log('🔍 Refresh token exists:', !!state.refresh);
-    
-    if (state.access || state.refresh) {
-      console.log('✅ Found stored tokens, validating...');
-      setTimeout(() => validateStoredTokens(), 100);
-    } else {
-      console.log('❌ No stored tokens found, attempting auto-login...');
-      setTimeout(async () => {
-        try {
-          // Auto-login with Ahmad/12345 for production
-          await login('Ahmad', '12345');
-          console.log('✅ Auto-login successful');
-          toast('✅ Auto-login successful!');
-          // Load dashboard after successful login
-          setTimeout(() => {
-            if (typeof loadDashboard === 'function') loadDashboard();
-          }, 500);
-        } catch (error) {
-          console.log('❌ Auto-login failed:', error.message);
-          setAuthStatus(false, 'Auto-login failed - use quickLogin()');
-          toast('❌ Auto-login failed. Try: quickLogin()');
-        }
-      }, 100);
-    }
+    // If we reach here, no backend was detected - still try authentication
+    performAuthCheck();
   })();
 
   const setStatus = (msg) => $('#status').textContent = msg || '';
@@ -564,11 +577,18 @@
       if (res.ok) {
         console.log('Stored access token is valid');
         setAuthStatus(true, 'Token validated ✓');
+        // Load dashboard data after successful token validation
+        loadAllDashboardData();
         return true;
       } else if (res.status === 401 && state.refresh) {
         console.log('Access token expired, attempting refresh...');
         setAuthStatus(false, 'Token expired, refreshing...');
-        return await refreshToken();
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          // Load dashboard data after successful token refresh
+          loadAllDashboardData();
+        }
+        return refreshed;
       } else {
         console.log('Token validation failed, clearing tokens');
         setAuthStatus(false, 'Token invalid');
@@ -673,6 +693,30 @@
     toast(`Error: ${error.message}`);
   }
 
+  // Helper function to load all dashboard data
+  function loadAllDashboardData() {
+    console.log('📊 Loading all dashboard data...');
+    if (!state.access) {
+      console.log('❌ No access token, skipping dashboard load');
+      return;
+    }
+    try {
+      loadDashboard();
+      loadUsers();
+      loadPendingUsers();
+      loadDeposits();
+      loadWithdrawals();
+      loadReferrals();
+      loadProofs();
+      loadProducts();
+      loadGlobalPool();
+      loadSystemOverview();
+      console.log('✅ Dashboard data loading initiated');
+    } catch (error) {
+      console.error('❌ Error loading dashboard data:', error);
+    }
+  }
+
   // Navigation
   $$('.nav-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -737,7 +781,7 @@
         if (loginForm) loginForm.style.display = 'none';
         if (loginBtn) loginBtn.textContent = 'Logout';
         // On login, refresh all sections
-        loadDashboard(); loadUsers(); loadPendingUsers(); loadDeposits(); loadWithdrawals(); loadReferrals(); loadProofs(); loadProducts(); loadGlobalPool(); loadSystemOverview();
+        loadAllDashboardData();
       }catch(e){ handleApiError(e, 'login'); }
     });
   }
@@ -1317,12 +1361,6 @@
   $('#refreshReferrals').addEventListener('click', loadReferrals);
   $('#refreshProofs').addEventListener('click', loadProofs);
 
-  // Initial loads
-  loadDashboard();
-  loadPendingUsers();
-  loadDeposits();
-  loadWithdrawals();
-  loadReferrals();
-  loadProofs();
-  loadGlobalPool();
+  // Initial loads - REMOVED: These will be called after authentication is confirmed
+  // The authentication flow will trigger these loads after successful login/token validation
 })();
