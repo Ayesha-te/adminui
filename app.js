@@ -309,16 +309,30 @@
       'Content-Type': 'application/json',
       ...headers
     };
-    
-    if(state.access && state.access.trim()){ 
-      baseHeaders['Authorization'] = `Bearer ${state.access}`;
-      console.log('🔑 Adding Authorization header with token:', state.access.substring(0, 20) + '...');
+
+    // If in-memory token is missing, try to load from localStorage (helps when state wasn't initialized)
+    try {
+      if ((!state.access || !String(state.access).trim()) && typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem('admin_access');
+        if (stored) {
+          state.access = stored;
+          console.log('🔁 Loaded access token from localStorage into state');
+        }
+      }
+    } catch (e) {
+      // ignore localStorage errors
+    }
+
+    if (state.access && String(state.access).trim()) {
+      const token = String(state.access).trim();
+      baseHeaders['Authorization'] = `Bearer ${token}`;
+      console.log('🔑 Adding Authorization header with token:', token.substring(0, 20) + '...');
       console.log('🔍 Full headers being sent:', baseHeaders);
     } else {
       console.log('❌ No access token available for Authorization header');
-      console.log('🔍 Token in state:', state.access ? 'exists' : 'missing');
-      console.log('🔍 Token in localStorage:', localStorage.getItem('admin_access') ? 'exists' : 'missing');
+      try { console.log('🔍 Token in localStorage:', localStorage.getItem('admin_access') ? 'exists' : 'missing'); } catch(_){}
     }
+
     return baseHeaders;
   }
 
