@@ -565,7 +565,27 @@
 
   // Validate stored tokens on app load
   async function validateStoredTokens() {
-    if (!state.access) return false;
+    if (!state.access) {
+      console.log('❌ No access token to validate, attempting auto-login...');
+      // No token, try auto-login
+      try {
+        await login('Ahmad', '12345');
+        console.log('✅ Auto-login successful after no token found');
+        toast('✅ Auto-login successful!');
+        // Load dashboard after successful login
+        setTimeout(() => {
+          if (typeof loadAllDashboardData === 'function') {
+            loadAllDashboardData();
+          }
+        }, 500);
+        return true;
+      } catch (error) {
+        console.log('❌ Auto-login failed:', error.message);
+        setAuthStatus(false, 'Auto-login failed - use quickLogin()');
+        toast('❌ Auto-login failed. Try: quickLogin()');
+        return false;
+      }
+    }
     
     try {
       // Test the access token with a simple API call
@@ -575,31 +595,86 @@
       });
       
       if (res.ok) {
-        console.log('Stored access token is valid');
+        console.log('✅ Stored access token is valid');
         setAuthStatus(true, 'Token validated ✓');
         // Load dashboard data after successful token validation
         loadAllDashboardData();
         return true;
       } else if (res.status === 401 && state.refresh) {
-        console.log('Access token expired, attempting refresh...');
+        console.log('🔄 Access token expired, attempting refresh...');
         setAuthStatus(false, 'Token expired, refreshing...');
         const refreshed = await refreshToken();
         if (refreshed) {
+          console.log('✅ Token refresh successful');
           // Load dashboard data after successful token refresh
           loadAllDashboardData();
+          return true;
+        } else {
+          console.log('❌ Token refresh failed, attempting auto-login...');
+          // Refresh failed, try auto-login
+          try {
+            await login('Ahmad', '12345');
+            console.log('✅ Auto-login successful after refresh failure');
+            toast('✅ Auto-login successful!');
+            // Load dashboard after successful login
+            setTimeout(() => {
+              if (typeof loadAllDashboardData === 'function') {
+                loadAllDashboardData();
+              }
+            }, 500);
+            return true;
+          } catch (error) {
+            console.log('❌ Auto-login failed:', error.message);
+            setAuthStatus(false, 'Auto-login failed - use quickLogin()');
+            toast('❌ Auto-login failed. Try: quickLogin()');
+            return false;
+          }
         }
-        return refreshed;
       } else {
-        console.log('Token validation failed, clearing tokens');
+        console.log('❌ Token validation failed (status: ' + res.status + '), attempting auto-login...');
         setAuthStatus(false, 'Token invalid');
         logout();
-        return false;
+        // Token invalid, try auto-login
+        try {
+          await login('Ahmad', '12345');
+          console.log('✅ Auto-login successful after token validation failure');
+          toast('✅ Auto-login successful!');
+          // Load dashboard after successful login
+          setTimeout(() => {
+            if (typeof loadAllDashboardData === 'function') {
+              loadAllDashboardData();
+            }
+          }, 500);
+          return true;
+        } catch (error) {
+          console.log('❌ Auto-login failed:', error.message);
+          setAuthStatus(false, 'Auto-login failed - use quickLogin()');
+          toast('❌ Auto-login failed. Try: quickLogin()');
+          return false;
+        }
       }
     } catch (error) {
-      console.error('Token validation error:', error);
+      console.error('❌ Token validation error:', error);
       setAuthStatus(false, 'Connection error');
       logout();
-      return false;
+      // Connection error, try auto-login anyway
+      try {
+        await login('Ahmad', '12345');
+        console.log('✅ Auto-login successful after connection error');
+        toast('✅ Auto-login successful!');
+        // Load dashboard after successful login
+        setTimeout(() => {
+          if (typeof loadAllDashboardData === 'function') {
+            loadAllDashboardData();
+          }
+        }, 500);
+        return true;
+      } catch (loginError) {
+        console.log('❌ Auto-login failed:', loginError.message);
+        setAuthStatus(false, 'Auto-login failed - use quickLogin()');
+        toast('❌ Auto-login failed. Try: quickLogin()');
+        return false;
+      }
     }
   }
 
@@ -853,7 +928,7 @@
             <td>${u.is_approved ? 'Yes' : 'No'}</td>
             <td>${Number(u.rewards_usd||0).toFixed(2)}</td>
             <td>${Number(u.passive_income_usd||0).toFixed(2)}</td>
-            <td>${Number(u.current_balance_usd||0).toFixed(2)}</td>
+            <td>${Number(u.current_income_usd||0).toFixed(2)}</td>
             <td>${Number(u.referrals_count||0)}</td>
             <td>${escapeHtml(u.bank_name || '-')}</td>
             <td>${escapeHtml(u.account_name || '-')}</td>
