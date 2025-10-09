@@ -1110,7 +1110,6 @@
           <td>${Number(d.amount_usd||0).toFixed(2)}</td>
           <td>${escapeHtml(d.created_at || '-')}</td>
           <td>
-            <button class="btn ok" data-action="approve" data-id="${d.id}">Approve</button>
             <button class="btn" data-action="credit" data-id="${d.id}">Credit</button>
             <button class="btn secondary" data-action="reject" data-id="${d.id}">Reject</button>
           </td>
