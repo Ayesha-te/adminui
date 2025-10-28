@@ -326,11 +326,13 @@
   };
 
   function authHeaders(headers={}){
-    // Ensure we always start with proper headers
     const baseHeaders = {
       'Content-Type': 'application/json',
       ...headers
     };
+    if(baseHeaders['Content-Type'] == null){
+      delete baseHeaders['Content-Type'];
+    }
     
     if(state.access && state.access.trim()){ 
       baseHeaders['Authorization'] = `Bearer ${state.access}`;
@@ -1215,7 +1217,7 @@
       setStatus('Working...');
       const res = await fetch(`${state.apiBase}/marketplace/admin/products/`, {
         method: 'POST',
-        headers: authHeaders(), // do NOT set Content-Type for FormData
+        headers: authHeaders({'Content-Type': null}),
         body: fd,
         credentials: 'omit'
       });
