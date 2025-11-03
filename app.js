@@ -1159,6 +1159,53 @@
     }catch(e){ console.error(e); tbody.innerHTML = '<tr><td colspan="5" class="muted">Failed to load</td></tr>'; }
   }
 
+  // Categories (admin)
+  async function loadCategories(){
+    try{
+      const rows = await get(`${state.apiBase}/marketplace/admin/categories/`);
+      const sel = $('#newProductCategory');
+      const tbody = $('#categoriesTbody');
+      if(sel){
+        // clear select but keep the empty option
+        const existingEmpty = sel.querySelector('option[value=""]');
+        sel.innerHTML = existingEmpty ? existingEmpty.outerHTML : '<option value="">No category</option>';
+      }
+      if(!rows || !rows.length){
+        if(tbody) tbody.innerHTML = '<tr><td colspan="2" class="muted">No categories</td></tr>';
+        return;
+      }
+      if(tbody) tbody.innerHTML = '';
+      rows.forEach(c=>{
+        if(sel){
+          const opt = document.createElement('option'); opt.value = c.id; opt.textContent = c.name;
+          sel.appendChild(opt);
+        }
+        if(tbody){
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${escapeHtml(c.name)}</td><td>${c.is_active? 'Yes' : 'No'}</td>`;
+          tbody.appendChild(tr);
+        }
+      });
+    }catch(e){ console.error('loadCategories error', e); if($('#categoriesTbody')) $('#categoriesTbody').innerHTML = '<tr><td colspan="2" class="muted">Failed to load</td></tr>'; }
+  }
+
+  // Add category
+  $('#addCategoryBtn')?.addEventListener('click', async (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    const btn = e.currentTarget; if(btn.disabled) return; btn.disabled = true;
+    try{
+      const name = ($('#newCategoryName')?.value||'').trim();
+      const desc = ($('#newCategoryDesc')?.value||'').trim();
+      if(!name){ toast('Category name required'); return; }
+      await post(`${state.apiBase}/marketplace/admin/categories/`, { name, description: desc });
+      toast('Category created');
+      $('#newCategoryName').value=''; $('#newCategoryDesc').value='';
+      await loadCategories();
+      await loadProducts();
+    }catch(err){ console.error('Add category failed', err); toast('Add category failed'); }
+    finally{ btn.disabled = false; }
+  });
+
   // Orders
   async function loadOrders(){
     const tbody = $('#ordersTbody');
@@ -1209,10 +1256,12 @@
       if(!title){ toast('Title is required'); return; }
       if(!description){ toast('Description is required'); return; }
       if(!(price>0)){ toast('Valid price (USD) is required'); return; }
-      const fd = new FormData();
+  const fd = new FormData();
       fd.append('title', title);
       fd.append('price_usd', String(price));
       fd.append('description', description);
+  const categoryId = $('#newProductCategory')?.value || '';
+  if(categoryId) fd.append('category', categoryId);
       if(imageFile){ fd.append('image', imageFile); }
       setStatus('Working...');
       const res = await fetch(`${state.apiBase}/marketplace/admin/products/`, {
@@ -1225,6 +1274,7 @@
       if(!res.ok){ throw new Error(await res.text()); }
       toast('Product added');
       $('#newProductName').value=''; $('#newProductPrice').value=''; $('#newProductDesc').value=''; if($('#newProductImage')) $('#newProductImage').value='';
+  if($('#newProductCategory')) $('#newProductCategory').value = '';
       await loadProducts();
     }catch(e){ console.error(e); toast('Add failed'); }
     finally{ btn.disabled = false; }
