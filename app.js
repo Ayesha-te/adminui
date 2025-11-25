@@ -12,7 +12,7 @@
   }
   const defaultApiBaseRaw =
     new URLSearchParams(location.search).get('apiBase') ||
-    'https://ref-backend-fw8y.onrender.com/api'; // Force production backend
+    'https://experienced-bobine-aamzaabdul-1b0916a2.koyeb.app/api'; // Force production backend
   const defaultApiBase = normalizeApiBase(defaultApiBaseRaw);
   
   // Clear any conflicting localStorage that might cause issues
@@ -93,7 +93,7 @@
     return base;
   };
   window.useProdApi = function(){
-    const base = 'https://ref-backend-fw8y.onrender.com/api';
+    const base = 'https://experienced-bobine-aamzaabdul-1b0916a2.koyeb.app/api';
     window.setApiBase(base);
     return base;
   };
@@ -138,7 +138,7 @@
 
   async function detectApiBase(){
     // Prioritize production backend, then local development
-    const productionBackend = 'https://ref-backend-fw8y.onrender.com/api';
+    const productionBackend = 'https://experienced-bobine-aamzaabdul-1b0916a2.koyeb.app/api';
     const candidates = [
       productionBackend,  // Production backend (Render)
       'http://192.168.100.141:8000/api',  // Network IP
@@ -213,7 +213,7 @@
                         window.location.protocol === 'https:';
     
     // Try local development first when not production
-    const productionBase = 'https://ref-backend-fw8y.onrender.com/api';
+    const productionBase = 'https://experienced-bobine-aamzaabdul-1b0916a2.koyeb.app/api';
 
     if (!isProduction) {
       const localCandidates = [
