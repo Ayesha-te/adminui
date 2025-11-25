@@ -12,7 +12,7 @@
   }
   const defaultApiBaseRaw =
     new URLSearchParams(location.search).get('apiBase') ||
-    'https://ref-backend-fw8y.onrender.com/api'; // Force production backend
+    new URL('/api', location.origin).toString().replace(/\/$/, '');
   const defaultApiBase = normalizeApiBase(defaultApiBaseRaw);
   
   // Clear any conflicting localStorage that might cause issues
@@ -79,67 +79,12 @@
     setTimeout(()=>{ el.style.display = 'none'; }, 2000);
   };
 
-  // Global functions for debugging
-  window.setApiBase = function(url) {
-    state.apiBase = normalizeApiBase(url);
-    try{ localStorage.setItem('adminApiBase', state.apiBase); }catch(_){ }
-    console.log('API Base manually set to:', state.apiBase);
-    toast('API Base updated to: ' + state.apiBase);
-  };
-
-  // Convenience helpers for local/prod switching
-  window.useLocalApi = function(port=8000){
-    const base = `http://localhost:${port}/api`;
-    window.setApiBase(base);
-    return base;
-  };
-  window.useProdApi = function(){
-    const base = 'https://ref-backend-fw8y.onrender.com/api';
-    window.setApiBase(base);
-    return base;
-  };
-  
-  window.getApiBase = function() {
-    console.log('Current API Base:', state.apiBase);
-    return state.apiBase;
-  };
-  
-  window.testApi = async function() {
-    try {
-      const response = await fetch(`${state.apiBase}/auth/token/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: '__probe__', password: '__probe__' })
-      });
-      console.log('API Test Result:', response.status, response.statusText, '->', state.apiBase);
-      toast(`API ${response.status} @ ${state.apiBase}`);
-      return response.status;
-    } catch (e) {
-      console.error('API Test Failed:', e);
-      toast('API test failed');
-      return false;
-    }
-  };
-
-  // Quick UI bindings for switching API base
-  document.addEventListener('DOMContentLoaded', ()=>{
-    const toLocal = document.getElementById('switchToLocal');
-    const toProd = document.getElementById('switchToProd');
-    if (toLocal) toLocal.addEventListener('click', ()=>{ window.useLocalApi(); window.testApi(); });
-    if (toProd) toProd.addEventListener('click', ()=>{ window.useProdApi(); window.testApi(); });
-  });
-
-  console.log('Admin UI Debug Commands:');
-  console.log('- setApiBase("http://192.168.100.141:8000/api") - Set API base manually');
-  console.log('- getApiBase() - Get current API base');
-  console.log('- testApi() - Test API connection');
-
   // Render current API base (no longer shown in UI)
   function showApiBase(){}
 
   async function detectApiBase(){
     // Prioritize production backend, then local development
-    const productionBackend = 'https://ref-backend-fw8y.onrender.com/api';
+    const productionBackend = 'https://ref-backend-8arb.onrender.com/api';
     const candidates = [
       productionBackend,  // Production backend (Render)
       'http://192.168.100.141:8000/api',  // Network IP
@@ -196,52 +141,26 @@
 
   // Initialize API base automatically without UI controls
   (async ()=>{
-    // Respect stored API base if present (do not override every load)
-    let storedBase = null;
-    try { storedBase = localStorage.getItem('adminApiBase'); } catch(_){ }
-    if (storedBase) {
-      state.apiBase = normalizeApiBase(storedBase);
-      console.log('Using stored API base:', state.apiBase);
-      showApiBase();
-      // Perform authentication check after API base is set
-      performAuthCheck();
-      return;
-    }
-
-    // Check if we're running in production (Vercel) - don't try localhost
-    const isProduction = window.location.hostname.includes('vercel.app') || 
-                        window.location.hostname.includes('netlify.app') ||
-                        window.location.protocol === 'https:';
+    // Clear cached API base to force re-detection
+    try{ localStorage.removeItem('adminApiBase'); }catch(_){ }
     
-    // Try local development first when not production
-    const productionBase = 'https://ref-backend-fw8y.onrender.com/api';
-
-    if (!isProduction) {
-      const localCandidates = [
-        'http://127.0.0.1:8000/api',
-        'http://localhost:8000/api',
-        location.origin.replace(/:\d+$/, '') + ':8000/api'
-      ];
-      for (const localBase of localCandidates) {
-        try {
-          console.log('Testing local backend:', localBase);
-          const testResponse = await fetch(`${localBase}/auth/token/`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: '__probe__', password: '__probe__' })
-          });
-          if ([400, 401].includes(testResponse.status)) {
-            state.apiBase = localBase;
-            try{ localStorage.setItem('adminApiBase', localBase); }catch(_){ }
-            console.log('✅ Admin UI connected to LOCAL backend:', localBase);
-            showApiBase();
-            // Perform authentication check after API base is set
-            performAuthCheck();
-            return;
-          }
-        } catch (e) {
-          console.log(`Local server ${localBase} not available:`, e.message);
-        }
+    // Try production backend first
+    const productionBase = 'https://ref-backend-8arb.onrender.com/api';
+    try {
+      const testResponse = await fetch(`${productionBase}/auth/token/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: '__probe__', password: '__probe__' })
+      });
+      if ([400, 401].includes(testResponse.status)) {
+        state.apiBase = productionBase;
+        try{ localStorage.setItem('adminApiBase', productionBase); }catch(_){ }
+        console.log('Admin UI connected to PRODUCTION backend:', productionBase);
+        showApiBase();
+        return;
       }
+    } catch (e) {
+      console.log('Production backend not available, trying local development...');
     }
 
     // Fallback: try production
@@ -327,49 +246,8 @@
   };
 
   function authHeaders(headers={}){
-    const baseHeaders = {
-      'Content-Type': 'application/json',
-      ...headers
-    };
-    if(baseHeaders['Content-Type'] == null){
-      delete baseHeaders['Content-Type'];
-    }
-    
-    if(state.access && state.access.trim()){ 
-      baseHeaders['Authorization'] = `Bearer ${state.access}`;
-      console.log('🔑 Adding Authorization header with token:', state.access.substring(0, 20) + '...');
-      console.log('🔍 Full headers being sent:', baseHeaders);
-    } else {
-      console.log('❌ No access token available for Authorization header');
-      console.log('🔍 Token in state:', state.access ? 'exists' : 'missing');
-      console.log('🔍 Token in localStorage (admin_access/token):', localStorage.getItem('admin_access') ? 'admin_access' : (localStorage.getItem('token') ? 'token' : 'missing'));
-    }
-    return baseHeaders;
-  }
-
-  function usdToPkr(usdAmount) {
-    const amount = Number(usdAmount || 0);
-    return (amount * state.conversionRate).toFixed(2);
-  }
-
-  function formatPkr(pkrAmount) {
-    return `₨${Number(pkrAmount || 0).toFixed(2)}`;
-  }
-
-  function formatUsdToPkr(usdAmount) {
-    return formatPkr(usdToPkr(usdAmount));
-  }
-
-  async function loadAdminConfig() {
-    try {
-      const data = await get(`${state.apiBase}/accounts/admin/config/`);
-      if (data.usd_to_pkr) {
-        state.conversionRate = data.usd_to_pkr;
-        console.log('✅ Conversion rate loaded:', state.conversionRate);
-      }
-    } catch (error) {
-      console.warn('⚠️ Failed to load conversion rate, using default:', state.conversionRate);
-    }
+    if(state.access){ headers['Authorization'] = `Bearer ${state.access}`; }
+    return headers;
   }
 
   const get = async (url) => {
@@ -591,237 +469,6 @@
     toast('Logged out');
   }
 
-  // Validate stored tokens on app load
-  async function validateStoredTokens() {
-    if (!state.access) {
-      console.log('❌ No access token to validate, attempting auto-login...');
-      // No token, try auto-login
-      try {
-        await login('Ahmad', '12345');
-        console.log('✅ Auto-login successful after no token found');
-        toast('✅ Auto-login successful!');
-        // Load dashboard after successful login
-        setTimeout(() => {
-          if (typeof loadAllDashboardData === 'function') {
-            loadAllDashboardData();
-          }
-        }, 500);
-        return true;
-      } catch (error) {
-        console.log('❌ Auto-login failed:', error.message);
-        setAuthStatus(false, 'Auto-login failed - use quickLogin()');
-        toast('❌ Auto-login failed. Try: quickLogin()');
-        return false;
-      }
-    }
-    
-    try {
-      // Test the access token with a simple API call
-      const res = await fetch(`${state.apiBase}/accounts/admin/users/?page=1&page_size=1`, {
-        headers: authHeaders(),
-        credentials: 'omit'
-      });
-      
-      if (res.ok) {
-        console.log('✅ Stored access token is valid');
-        setAuthStatus(true, 'Token validated ✓');
-        // Load dashboard data after successful token validation
-        loadAllDashboardData();
-        return true;
-      } else if (res.status === 401 && state.refresh) {
-        console.log('🔄 Access token expired, attempting refresh...');
-        setAuthStatus(false, 'Token expired, refreshing...');
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          console.log('✅ Token refresh successful');
-          // Load dashboard data after successful token refresh
-          loadAllDashboardData();
-          return true;
-        } else {
-          console.log('❌ Token refresh failed, attempting auto-login...');
-          // Refresh failed, try auto-login
-          try {
-            await login('Ahmad', '12345');
-            console.log('✅ Auto-login successful after refresh failure');
-            toast('✅ Auto-login successful!');
-            // Load dashboard after successful login
-            setTimeout(() => {
-              if (typeof loadAllDashboardData === 'function') {
-                loadAllDashboardData();
-              }
-            }, 500);
-            return true;
-          } catch (error) {
-            console.log('❌ Auto-login failed:', error.message);
-            setAuthStatus(false, 'Auto-login failed - use quickLogin()');
-            toast('❌ Auto-login failed. Try: quickLogin()');
-            return false;
-          }
-        }
-      } else {
-        console.log('❌ Token validation failed (status: ' + res.status + '), attempting auto-login...');
-        setAuthStatus(false, 'Token invalid');
-        logout();
-        // Token invalid, try auto-login
-        try {
-          await login('Ahmad', '12345');
-          console.log('✅ Auto-login successful after token validation failure');
-          toast('✅ Auto-login successful!');
-          // Load dashboard after successful login
-          setTimeout(() => {
-            if (typeof loadAllDashboardData === 'function') {
-              loadAllDashboardData();
-            }
-          }, 500);
-          return true;
-        } catch (error) {
-          console.log('❌ Auto-login failed:', error.message);
-          setAuthStatus(false, 'Auto-login failed - use quickLogin()');
-          toast('❌ Auto-login failed. Try: quickLogin()');
-          return false;
-        }
-      }
-    } catch (error) {
-      console.error('❌ Token validation error:', error);
-      setAuthStatus(false, 'Connection error');
-      logout();
-      // Connection error, try auto-login anyway
-      try {
-        await login('Ahmad', '12345');
-        console.log('✅ Auto-login successful after connection error');
-        toast('✅ Auto-login successful!');
-        // Load dashboard after successful login
-        setTimeout(() => {
-          if (typeof loadAllDashboardData === 'function') {
-            loadAllDashboardData();
-          }
-        }, 500);
-        return true;
-      } catch (loginError) {
-        console.log('❌ Auto-login failed:', loginError.message);
-        setAuthStatus(false, 'Auto-login failed - use quickLogin()');
-        toast('❌ Auto-login failed. Try: quickLogin()');
-        return false;
-      }
-    }
-  }
-
-  // Debug helper function - call from browser console
-  window.debugAuth = function() {
-    console.log('=== AUTHENTICATION DEBUG INFO ===');
-    console.log('API Base:', state.apiBase);
-    console.log('Access Token:', state.access ? state.access.substring(0, 50) + '...' : 'None');
-    console.log('Refresh Token:', state.refresh ? state.refresh.substring(0, 50) + '...' : 'None');
-    console.log('LocalStorage Access:', localStorage.getItem('admin_access') ? 'Present' : 'Missing');
-    console.log('LocalStorage Refresh:', localStorage.getItem('admin_refresh') ? 'Present' : 'Missing');
-    
-    // Test a simple API call
-    if (state.access) {
-      console.log('Testing API call...');
-      fetch(`${state.apiBase}/accounts/admin/users/?page=1&page_size=1`, {
-        headers: authHeaders(),
-        credentials: 'omit'
-      }).then(res => {
-        console.log('Test API Response Status:', res.status);
-        if (res.status === 401) {
-          console.log('❌ 401 Unauthorized - Token is invalid or expired');
-        } else if (res.status === 403) {
-          console.log('❌ 403 Forbidden - User lacks admin permissions');
-        } else if (res.ok) {
-          console.log('✅ API call successful - Authentication working');
-        } else {
-          console.log('⚠️ Unexpected status:', res.status);
-        }
-      }).catch(err => {
-        console.log('❌ Network error:', err.message);
-      });
-    } else {
-      console.log('❌ No access token available');
-    }
-    console.log('=====================================');
-  };
-
-  // Enhanced error handling for API responses
-  function handleApiError(error, url) {
-    console.error('API Error:', error);
-    
-    // Check for HTML response errors (the main issue we're fixing)
-    if (error.message.includes('Server returned HTML instead of JSON')) {
-      setAuthStatus(false, 'Auth failed');
-      toast('❌ Authentication error. Please login again.');
-      setStatus('Server returned HTML error page - likely authentication issue');
-      logout();
-      return;
-    }
-    
-    // Check for HTTP 401 errors
-    if (error.message.includes('HTTP 401')) {
-      setAuthStatus(false, 'Unauthorized');
-      toast('❌ Unauthorized. Please login again.');
-      setStatus('401 Unauthorized - invalid or missing credentials');
-      logout();
-      return;
-    }
-    
-    // Check for CORS errors
-    if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
-      setAuthStatus(false, 'Connection failed');
-      toast('❌ Connection failed. Check if backend is running and CORS is configured.');
-      setStatus('CORS or network error - check backend configuration');
-      return;
-    }
-    
-    if (error.message.includes('Authentication failed')) {
-      setAuthStatus(false, 'Auth failed');
-      toast('Please login again');
-      return;
-    }
-    
-    // Check for specific admin permission errors
-    if (url.includes('/admin/') && error.message.includes('permission')) {
-      toast('Admin access required. Check your user role.');
-      setAuthStatus(false, 'No admin access');
-      return;
-    }
-    
-    // Check for token-related errors
-    if (error.message.includes('Invalid token') || error.message.includes('Token has expired')) {
-      setAuthStatus(false, 'Token invalid');
-      toast('Session expired. Please login again.');
-      logout();
-      return;
-    }
-    
-    // Generic error handling
-    toast(`Error: ${error.message}`);
-  }
-
-  // Helper function to load all dashboard data
-  function loadAllDashboardData() {
-    console.log('📊 Loading all dashboard data...');
-    if (!state.access) {
-      console.log('❌ No access token, skipping dashboard load');
-      return;
-    }
-    try {
-      loadAdminConfig();
-      loadDashboard();
-      loadUsers();
-      loadPendingUsers();
-      loadDeposits();
-      loadWithdrawals();
-      loadReferrals();
-      loadProofs();
-      loadProducts();
-      loadCategories();
-      loadGlobalPool();
-      loadSystemOverview();
-      console.log('✅ Dashboard data loading initiated');
-    } catch (error) {
-      console.error('❌ Error loading dashboard data:', error);
-    }
-  }
-
   // Navigation
   $$('.nav-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -956,9 +603,9 @@
             <td>${u.is_active ? 'Yes' : 'No'}</td>
             <td>${u.is_staff ? 'Yes' : 'No'}</td>
             <td>${u.is_approved ? 'Yes' : 'No'}</td>
-            <td>${formatUsdToPkr(u.rewards_usd)}</td>
-            <td>${formatUsdToPkr(u.passive_income_usd)}</td>
-            <td>${formatUsdToPkr(u.current_income_usd)}</td>
+            <td>${Number(u.rewards_usd||0).toFixed(2)}</td>
+            <td>${Number(u.passive_income_usd||0).toFixed(2)}</td>
+            <td>${Number(u.current_balance_usd||0).toFixed(2)}</td>
             <td>${Number(u.referrals_count||0)}</td>
             <td>${escapeHtml(u.bank_name || '-')}</td>
             <td>${escapeHtml(u.account_name || '-')}</td>
@@ -1356,8 +1003,9 @@
           <td>${escapeHtml(w.tx_id || '-')}</td>
           <td>${escapeHtml(w.bank_name || '-')}</td>
           <td>${escapeHtml(w.account_name || '-')}</td>
-          <td>${formatUsdToPkr(w.amount_usd)}</td>
-          <td>${w.created_at ? new Date(w.created_at).toLocaleString() : '-'}</td>
+          <td>${escapeHtml(accountNumber)}</td> <!-- Account Number column added here -->
+          <td>${Number(w.amount_usd||0).toFixed(2)}</td>
+          <td>${escapeHtml(w.created_at || '-')}</td>
           <td>
             <button class="btn ok" data-action="approve" data-id="${w.id}">Approve</button>
             <button class="btn" data-action="paid" data-id="${w.id}">Mark Paid</button>
