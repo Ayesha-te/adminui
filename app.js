@@ -202,6 +202,11 @@
 
   const setStatus = (msg) => $('#status').textContent = msg || '';
   
+  const handleApiError = (error, context = '') => {
+    console.error(`❌ API Error in ${context}:`, error.message);
+    toast(`Error in ${context}: ${error.message}`);
+  };
+  
   const setAuthStatus = (isAuthenticated, message = '') => {
     const authStatusEl = $('#authStatus');
     const loginBtn = $('#loginBtn');
