@@ -84,7 +84,7 @@
 
   async function detectApiBase(){
     // Prioritize production backend, then local development
-    const productionBackend = 'https://ref-backend-8arb.onrender.com/api';
+    const productionBackend = 'https://experienced-bobine-aamzaabdul-1b0916a2.koyeb.app/api';
     const candidates = [
       productionBackend,  // Production backend (Render)
       'http://192.168.100.141:8000/api',  // Network IP
@@ -145,7 +145,7 @@
     try{ localStorage.removeItem('adminApiBase'); }catch(_){ }
     
     // Try production backend first
-    const productionBase = 'https://ref-backend-8arb.onrender.com/api';
+    const productionBase = 'https://experienced-bobine-aamzaabdul-1b0916a2.koyeb.app/api';
     try {
       const testResponse = await fetch(`${productionBase}/auth/token/`, {
         method: 'POST',
