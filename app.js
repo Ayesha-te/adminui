@@ -574,6 +574,18 @@
     }
   }
 
+  async function loadAllDashboardData(){
+    console.log('📊 Loading all dashboard data...');
+    try {
+      setStatus('Loading dashboard...');
+      await loadDashboard();
+      setStatus('Dashboard loaded ✓');
+    } catch (e) {
+      console.error('Error loading dashboard:', e);
+      handleApiError(e, 'loadAllDashboardData');
+    }
+  }
+
   // Users full list with search/filter/pagination
   const usersState = { page: 1, pageSize: 20, q: '', isApproved: 'true', isActive: '', isStaff: '', djFrom: '', djTo: '', orderBy: 'id' };
 
