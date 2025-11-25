@@ -474,6 +474,50 @@
     toast('Logged out');
   }
 
+  async function validateStoredTokens(){
+    console.log('🔍 Validating stored tokens...');
+    if(!state.access){
+      console.log('❌ No access token stored');
+      return false;
+    }
+    
+    try {
+      const res = await fetch(`${state.apiBase}/accounts/me/`, {
+        method: 'GET',
+        headers: authHeaders(),
+        credentials: 'omit'
+      });
+      
+      console.log('📡 Validation response status:', res.status);
+      
+      if(res.status === 401 && state.refresh){
+        console.log('🔄 Access token expired, attempting refresh...');
+        const refreshSuccess = await refreshToken();
+        if(refreshSuccess){
+          console.log('✅ Token refreshed successfully');
+          setAuthStatus(true, 'Tokens refreshed ✓');
+          return true;
+        } else {
+          console.log('❌ Token refresh failed');
+          return false;
+        }
+      }
+      
+      if(res.ok){
+        console.log('✅ Tokens are valid');
+        setAuthStatus(true, 'Authenticated ✓');
+        return true;
+      } else {
+        console.log('❌ Token validation failed:', res.status);
+        logout();
+        return false;
+      }
+    } catch(error){
+      console.error('❌ Error validating tokens:', error);
+      return false;
+    }
+  }
+
   // Navigation
   $$('.nav-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
