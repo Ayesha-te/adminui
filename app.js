@@ -544,46 +544,32 @@
   // Login bindings
   const loginBtn = $('#loginBtn');
   const loginForm = $('#loginForm');
-  const usernameInput = $('#username');
-  const passwordInput = $('#password');
-  const doLoginBtn = $('#doLogin');
+  const usernameInput = $('#loginUsername');
+  const passwordInput = $('#loginPassword');
   
   if (loginBtn) {
-    loginBtn.addEventListener('click', ()=>{
+    loginBtn.addEventListener('click', async ()=>{
       // Handle logout if already logged in
       if(loginBtn.textContent === 'Logout'){
         logout();
         loginBtn.textContent = 'Login';
-        if (loginForm) loginForm.style.display = 'none';
         return;
       }
       
-      // Show/hide login form
-      if(loginForm){
-        if(loginForm.style.display === 'none'){
-          loginForm.style.display = 'flex';
-          loginBtn.textContent = 'Cancel';
-          if (usernameInput) usernameInput.focus();
-        } else {
-          loginForm.style.display = 'none';
-          loginBtn.textContent = 'Login';
-        }
+      // Check if trying to login with credentials
+      const u = usernameInput ? usernameInput.value.trim() : '';
+      const p = passwordInput ? passwordInput.value : '';
+      
+      if(u && p){
+        // Perform login
+        try{
+          await login(u,p);
+          usernameInput.value = '';
+          passwordInput.value = '';
+          loginBtn.textContent = 'Logout';
+          loadAllDashboardData();
+        }catch(e){ handleApiError(e, 'login'); }
       }
-    });
-  }
-  
-  if (doLoginBtn) {
-    doLoginBtn.addEventListener('click', async ()=>{
-      try{
-        const u = usernameInput ? usernameInput.value.trim() : '';
-        const p = passwordInput ? passwordInput.value : '';
-        if(!u||!p){ toast('Enter username and password'); return; }
-        await login(u,p);
-        if (loginForm) loginForm.style.display = 'none';
-        if (loginBtn) loginBtn.textContent = 'Logout';
-        // On login, refresh all sections
-        loadAllDashboardData();
-      }catch(e){ handleApiError(e, 'login'); }
     });
   }
   
@@ -595,7 +581,7 @@
   }
   if (passwordInput) {
     passwordInput.addEventListener('keypress', (e) => {
-      if(e.key === 'Enter' && doLoginBtn) doLoginBtn.click();
+      if(e.key === 'Enter' && loginBtn) loginBtn.click();
     });
   }
 
