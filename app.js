@@ -79,6 +79,11 @@
     setTimeout(()=>{ el.style.display = 'none'; }, 2000);
   };
 
+  const formatUsdToPkr = (usd) => {
+    const pkr = Number(usd || 0) * state.conversionRate;
+    return `${pkr.toFixed(2)} PKR`;
+  };
+
   // Render current API base (no longer shown in UI)
   function showApiBase(){}
 
@@ -536,7 +541,7 @@
       if(id==='system'){ if(state.access) loadSystem(); else setStatus('Login required'); }
       if(id==='globalpool'){ if(state.access) loadGlobalPool(); else setStatus('Login required'); }
       if(id==='systemoverview'){ if(state.access) loadSystemOverview(); else setStatus('Login required'); }
-      if(id==='products'){ if(state.access) loadProducts(); else setStatus('Login required'); }
+      if(id==='products'){ if(state.access) loadProductsAndCategories(); else setStatus('Login required'); }
       if(id==='orders'){ if(state.access) loadOrders(); else setStatus('Login required'); }
     });
   });
@@ -650,9 +655,9 @@
             <td>${u.is_active ? 'Yes' : 'No'}</td>
             <td>${u.is_staff ? 'Yes' : 'No'}</td>
             <td>${u.is_approved ? 'Yes' : 'No'}</td>
-            <td>${Number(u.rewards_usd||0).toFixed(2)}</td>
-            <td>${Number(u.passive_income_usd||0).toFixed(2)}</td>
-            <td>${Number(u.current_balance_usd||0).toFixed(2)}</td>
+            <td>${formatUsdToPkr(u.rewards_usd||0)}</td>
+            <td>${formatUsdToPkr(u.passive_income_usd||0)}</td>
+            <td>${formatUsdToPkr(u.current_balance_usd||0)}</td>
             <td>${Number(u.referrals_count||0)}</td>
             <td>${escapeHtml(u.bank_name || '-')}</td>
             <td>${escapeHtml(u.account_name || '-')}</td>
@@ -881,6 +886,10 @@
     }catch(e){ console.error(e); tbody.innerHTML = '<tr><td colspan="5" class="muted">Failed to load</td></tr>'; }
   }
 
+  async function loadProductsAndCategories(){
+    await Promise.all([loadProducts(), loadCategories()]);
+  }
+
   // Categories (admin)
   async function loadCategories(){
     try{
@@ -1051,7 +1060,7 @@
           <td>${escapeHtml(w.bank_name || '-')}</td>
           <td>${escapeHtml(w.account_name || '-')}</td>
           <td>${escapeHtml(accountNumber)}</td> <!-- Account Number column added here -->
-          <td>${Number(w.amount_usd||0).toFixed(2)}</td>
+          <td>${formatUsdToPkr(w.amount_usd||0)}</td>
           <td>${escapeHtml(w.created_at || '-')}</td>
           <td>
             <button class="btn ok" data-action="approve" data-id="${w.id}">Approve</button>
