@@ -995,9 +995,11 @@
   if(categoryId) fd.append('category', categoryId);
       if(imageFile){ fd.append('image', imageFile); }
       setStatus('Working...');
+      const headers = { ...authHeaders({}) };
+      delete headers['Content-Type'];
       const res = await fetch(`${state.apiBase}/marketplace/admin/products/`, {
         method: 'POST',
-        headers: authHeaders({'Content-Type': null}),
+        headers: headers,
         body: fd,
         credentials: 'omit'
       });
