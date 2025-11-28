@@ -84,6 +84,10 @@
     return `${pkr.toFixed(2)} PKR`;
   };
 
+  const formatPkr = (pkr) => {
+    return `${Number(pkr || 0).toFixed(2)} PKR`;
+  };
+
   // Render current API base (no longer shown in UI)
   function showApiBase(){}
 
@@ -876,7 +880,7 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escapeHtml(p.title)}</td>
-          <td>${formatUsdToPkr(p.price_usd)}</td>
+          <td>${formatPkr(p.price_pkr)}</td>
           <td>${escapeHtml(p.description||'')}</td>
           <td>${p.is_active ? 'Yes' : 'No'}</td>
           <td>
@@ -988,10 +992,10 @@
       const imageFile = $('#newProductImage')?.files?.[0] || null;
       if(!title){ toast('Title is required'); return; }
       if(!description){ toast('Description is required'); return; }
-      if(!(price>0)){ toast('Valid price (USD) is required'); return; }
+      if(!(price>0)){ toast('Valid price (PKR) is required'); return; }
   const fd = new FormData();
       fd.append('title', title);
-      fd.append('price_usd', String(price));
+      fd.append('price_pkr', String(price));
       fd.append('description', description);
   const categoryId = $('#newProductCategory')?.value || '';
   if(categoryId) fd.append('category', categoryId);
