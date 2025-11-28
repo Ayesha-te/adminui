@@ -997,7 +997,7 @@
       setStatus('Working...');
       const res = await fetch(`${state.apiBase}/marketplace/admin/products/`, {
         method: 'POST',
-        headers: authHeaders({}),
+        headers: authHeaders({'Content-Type': null}),
         body: fd,
         credentials: 'omit'
       });
