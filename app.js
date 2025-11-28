@@ -389,7 +389,8 @@
     const res = await fetch(`${state.apiBase}/auth/token/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password }),
+      credentials: 'omit'
     });
     console.log('Login response status:', res.status);
     if(!res.ok){
@@ -437,7 +438,8 @@
       const res = await fetch(`${state.apiBase}/auth/token/refresh/`, {
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh: state.refresh })
+        body: JSON.stringify({ refresh: state.refresh }),
+        credentials: 'omit'
       });
       
       if (!res.ok) {
