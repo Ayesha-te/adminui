@@ -84,6 +84,10 @@
     return `${pkr.toFixed(2)} PKR`;
   };
 
+  const formatPkr = (pkr) => {
+    return `${Number(pkr || 0).toFixed(2)} PKR`;
+  };
+
   // Render current API base (no longer shown in UI)
   function showApiBase(){}
 
@@ -389,7 +393,8 @@
     const res = await fetch(`${state.apiBase}/auth/token/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password }),
+      credentials: 'omit'
     });
     console.log('Login response status:', res.status);
     if(!res.ok){
@@ -437,7 +442,8 @@
       const res = await fetch(`${state.apiBase}/auth/token/refresh/`, {
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh: state.refresh })
+        body: JSON.stringify({ refresh: state.refresh }),
+        credentials: 'omit'
       });
       
       if (!res.ok) {
@@ -655,9 +661,9 @@
             <td>${u.is_active ? 'Yes' : 'No'}</td>
             <td>${u.is_staff ? 'Yes' : 'No'}</td>
             <td>${u.is_approved ? 'Yes' : 'No'}</td>
-            <td>${formatUsdToPkr(u.rewards_usd||0)}</td>
-            <td>${formatUsdToPkr(u.passive_income_usd||0)}</td>
-            <td>${formatUsdToPkr(u.current_balance_usd||0)}</td>
+            <td>${formatPkr(u.rewards_pkr||0)}</td>
+            <td>${formatPkr(u.passive_income_pkr||0)}</td>
+            <td>${formatPkr(u.current_balance_pkr||0)}</td>
             <td>${Number(u.referrals_count||0)}</td>
             <td>${escapeHtml(u.bank_name || '-')}</td>
             <td>${escapeHtml(u.account_name || '-')}</td>
@@ -874,7 +880,7 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escapeHtml(p.title)}</td>
-          <td>${formatUsdToPkr(p.price_usd)}</td>
+          <td>${formatPkr(p.price_pkr)}</td>
           <td>${escapeHtml(p.description||'')}</td>
           <td>${p.is_active ? 'Yes' : 'No'}</td>
           <td>
@@ -958,7 +964,7 @@
           <td>${escapeHtml(o.buyer_username || '-')}</td>
           <td>${escapeHtml([o.guest_name, o.guest_email, o.guest_phone].filter(Boolean).join(' / ') || '-')}</td>
           <td>${escapeHtml(o.tx_id || '-')}</td>
-          <td>${formatUsdToPkr(o.total_usd)}</td>
+          <td>${formatPkr(o.total_pkr)}</td>
           <td>${escapeHtml(o.status || '-')}</td>
           <td>${proofUrl ? `<a href="${proofUrl}" target="_blank">View</a>` : '-'}</td>
           <td>${o.created_at ? new Date(o.created_at).toLocaleString() : '-'}</td>
@@ -986,18 +992,20 @@
       const imageFile = $('#newProductImage')?.files?.[0] || null;
       if(!title){ toast('Title is required'); return; }
       if(!description){ toast('Description is required'); return; }
-      if(!(price>0)){ toast('Valid price (USD) is required'); return; }
+      if(!(price>0)){ toast('Valid price (PKR) is required'); return; }
   const fd = new FormData();
       fd.append('title', title);
-      fd.append('price_usd', String(price));
+      fd.append('price_pkr', String(price));
       fd.append('description', description);
   const categoryId = $('#newProductCategory')?.value || '';
   if(categoryId) fd.append('category', categoryId);
       if(imageFile){ fd.append('image', imageFile); }
       setStatus('Working...');
+      const headers = { ...authHeaders({}) };
+      delete headers['Content-Type'];
       const res = await fetch(`${state.apiBase}/marketplace/admin/products/`, {
         method: 'POST',
-        headers: authHeaders({'Content-Type': null}),
+        headers: headers,
         body: fd,
         credentials: 'omit'
       });
@@ -1195,7 +1203,7 @@
       tbody.innerHTML = rows.length ? '' : '<tr><td colspan="2" class="muted">No data</td></tr>';
       rows.forEach(r=>{
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${escapeHtml(r.username)}</td><td>${formatUsdToPkr(r.total_passive_usd||0)}</td>`;
+        tr.innerHTML = `<td>${escapeHtml(r.username)}</td><td>${formatPkr(r.total_passive_pkr||0)}</td>`;
         tbody.appendChild(tr);
       });
     }catch(e){ console.error(e); toast('Failed to load global pool'); }
