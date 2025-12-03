@@ -661,9 +661,9 @@
             <td>${u.is_active ? 'Yes' : 'No'}</td>
             <td>${u.is_staff ? 'Yes' : 'No'}</td>
             <td>${u.is_approved ? 'Yes' : 'No'}</td>
-            <td>${formatUsdToPkr(u.rewards_usd||0)}</td>
-            <td>${formatUsdToPkr(u.passive_income_usd||0)}</td>
-            <td>${formatUsdToPkr(u.current_balance_usd||0)}</td>
+            <td>${formatPkr(u.rewards_pkr||0)}</td>
+            <td>${formatPkr(u.passive_income_pkr||0)}</td>
+            <td>${formatPkr(u.current_balance_pkr||0)}</td>
             <td>${Number(u.referrals_count||0)}</td>
             <td>${escapeHtml(u.bank_name || '-')}</td>
             <td>${escapeHtml(u.account_name || '-')}</td>
@@ -871,14 +871,16 @@
   async function loadProducts(){
     const tbody = $('#productsTbody');
     if(!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="5" class="muted">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
     try{
       const rows = await get(`${state.apiBase}/marketplace/admin/products/`);
-      if(!rows.length){ tbody.innerHTML = '<tr><td colspan="5" class="muted">No products</td></tr>'; return; }
+      if(!rows.length){ tbody.innerHTML = '<tr><td colspan="6" class="muted">No products</td></tr>'; return; }
       tbody.innerHTML = '';
       rows.forEach(p=>{
         const tr = document.createElement('tr');
+        const imgHtml = p.image_url ? `<img src="${p.image_url}" alt="${escapeHtml(p.title)}" style="height: 50px; width: 50px; object-fit: cover; border-radius: 4px;">` : '<span class="muted">—</span>';
         tr.innerHTML = `
+          <td>${imgHtml}</td>
           <td>${escapeHtml(p.title)}</td>
           <td>${formatPkr(p.price_pkr)}</td>
           <td>${escapeHtml(p.description||'')}</td>
@@ -889,7 +891,7 @@
         `;
         tbody.appendChild(tr);
       });
-    }catch(e){ console.error(e); tbody.innerHTML = '<tr><td colspan="5" class="muted">Failed to load</td></tr>'; }
+    }catch(e){ console.error(e); tbody.innerHTML = '<tr><td colspan="6" class="muted">Failed to load</td></tr>'; }
   }
 
   async function loadProductsAndCategories(){
@@ -964,7 +966,7 @@
           <td>${escapeHtml(o.buyer_username || '-')}</td>
           <td>${escapeHtml([o.guest_name, o.guest_email, o.guest_phone].filter(Boolean).join(' / ') || '-')}</td>
           <td>${escapeHtml(o.tx_id || '-')}</td>
-          <td>${formatUsdToPkr(o.total_usd)}</td>
+          <td>${formatPkr(o.total_pkr)}</td>
           <td>${escapeHtml(o.status || '-')}</td>
           <td>${proofUrl ? `<a href="${proofUrl}" target="_blank">View</a>` : '-'}</td>
           <td>${o.created_at ? new Date(o.created_at).toLocaleString() : '-'}</td>
@@ -1203,7 +1205,7 @@
       tbody.innerHTML = rows.length ? '' : '<tr><td colspan="2" class="muted">No data</td></tr>';
       rows.forEach(r=>{
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${escapeHtml(r.username)}</td><td>${formatUsdToPkr(r.total_passive_usd||0)}</td>`;
+        tr.innerHTML = `<td>${escapeHtml(r.username)}</td><td>${formatPkr(r.total_passive_pkr||0)}</td>`;
         tbody.appendChild(tr);
       });
     }catch(e){ console.error(e); toast('Failed to load global pool'); }
