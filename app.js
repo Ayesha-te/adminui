@@ -833,7 +833,7 @@
       tbody.innerHTML = '';
       rows.forEach(d=>{
         const tr = document.createElement('tr');
-        const proofUrl = d.proof_image_url || (d.proof_image ? `${location.origin}/media/${d.proof_image}` : null);
+        const proofUrl = d.proof_image || null;
         tr.innerHTML = `
           <td>${d.id}</td>
           <td>${escapeHtml(d.user?.username || '-')}</td>
@@ -878,7 +878,7 @@
       tbody.innerHTML = '';
       rows.forEach(p=>{
         const tr = document.createElement('tr');
-        const imgHtml = p.image_url ? `<img src="${p.image_url}" alt="${escapeHtml(p.title)}" style="height: 50px; width: 50px; object-fit: cover; border-radius: 4px;">` : '<span class="muted">—</span>';
+        const imgHtml = p.image ? `<img src="${p.image}" alt="${escapeHtml(p.title)}" style="height: 50px; width: 50px; object-fit: cover; border-radius: 4px;">` : '<span class="muted">—</span>';
         tr.innerHTML = `
           <td>${imgHtml}</td>
           <td>${escapeHtml(p.title)}</td>
@@ -959,7 +959,7 @@
       tbody.innerHTML = '';
       rows.forEach(o=>{
         const tr = document.createElement('tr');
-        const proofUrl = o.proof_image_url || (o.proof_image ? `${location.origin}/media/${o.proof_image}` : null);
+        const proofUrl = o.proof_image || null;
         tr.innerHTML = `
           <td>${o.id}</td>
           <td>${escapeHtml(o.product_title || '-')}</td>
