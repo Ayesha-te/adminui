@@ -1001,7 +1001,7 @@
       fd.append('description', description);
   const categoryId = $('#newProductCategory')?.value || '';
   if(categoryId) fd.append('category', categoryId);
-      if(imageFile){ fd.append('image', imageFile); }
+      if(imageFile){ fd.append('image_file', imageFile); }
       setStatus('Working...');
       const headers = { ...authHeaders({}) };
       delete headers['Content-Type'];
