@@ -871,10 +871,10 @@
   async function loadProducts(){
     const tbody = $('#productsTbody');
     if(!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading...</td></tr>';
     try{
       const rows = await get(`${state.apiBase}/marketplace/admin/products/`);
-      if(!rows.length){ tbody.innerHTML = '<tr><td colspan="6" class="muted">No products</td></tr>'; return; }
+      if(!rows.length){ tbody.innerHTML = '<tr><td colspan="7" class="muted">No products</td></tr>'; return; }
       tbody.innerHTML = '';
       rows.forEach(p=>{
         const tr = document.createElement('tr');
@@ -887,11 +887,13 @@
           <td>${p.is_active ? 'Yes' : 'No'}</td>
           <td>
             <button class="btn" data-action="toggle" data-id="${p.id}">${p.is_active?'Disable':'Enable'}</button>
+            <button class="btn" data-action="edit" data-id="${p.id}">Edit</button>
+            <button class="btn secondary" data-action="delete" data-id="${p.id}" style="background-color: #dc2626; color: white;">Delete</button>
           </td>
         `;
         tbody.appendChild(tr);
       });
-    }catch(e){ console.error(e); tbody.innerHTML = '<tr><td colspan="6" class="muted">Failed to load</td></tr>'; }
+    }catch(e){ console.error(e); tbody.innerHTML = '<tr><td colspan="7" class="muted">Failed to load</td></tr>'; }
   }
 
   async function loadProductsAndCategories(){
@@ -949,13 +951,13 @@
   async function loadOrders(){
     const tbody = $('#ordersTbody');
     if(!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="10" class="muted">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="muted">Loading...</td></tr>';
     try{
       const statusSel = $('#ordersFilterStatus');
       const statusVal = statusSel ? statusSel.value : '';
       const url = statusVal ? `${state.apiBase}/marketplace/admin/orders/?status=${encodeURIComponent(statusVal)}` : `${state.apiBase}/marketplace/admin/orders/`;
       const rows = await get(url);
-      if(!rows.length){ tbody.innerHTML = '<tr><td colspan="10" class="muted">No orders</td></tr>'; return; }
+      if(!rows.length){ tbody.innerHTML = '<tr><td colspan="11" class="muted">No orders</td></tr>'; return; }
       tbody.innerHTML = '';
       rows.forEach(o=>{
         const tr = document.createElement('tr');
@@ -965,6 +967,7 @@
           <td>${escapeHtml(o.product_title || '-')}</td>
           <td>${escapeHtml(o.buyer_username || '-')}</td>
           <td>${escapeHtml([o.guest_name, o.guest_email, o.guest_phone].filter(Boolean).join(' / ') || '-')}</td>
+          <td>${escapeHtml(o.guest_address || '-')}</td>
           <td>${escapeHtml(o.tx_id || '-')}</td>
           <td>${formatPkr(o.total_pkr)}</td>
           <td>${escapeHtml(o.status || '-')}</td>
@@ -978,7 +981,7 @@
         `;
         tbody.appendChild(tr);
       });
-    }catch(e){ console.error(e); tbody.innerHTML = '<tr><td colspan="10" class="muted">Failed to load</td></tr>'; }
+    }catch(e){ console.error(e); tbody.innerHTML = '<tr><td colspan="11" class="muted">Failed to load</td></tr>'; }
   }
 
   $('#addProductBtn')?.addEventListener('click', async (e)=>{
@@ -1022,15 +1025,59 @@
   });
 
   document.querySelector('#productsTbody')?.addEventListener('click', async (e)=>{
-    const btn = e.target.closest('button[data-action="toggle"]');
-    if(!btn) return;
-    btn.disabled = true;
-    try{
-      await patch(`${state.apiBase}/marketplace/admin/products/${btn.dataset.id}/toggle/`, {});
-      toast('Product status updated');
-      await loadProducts();
-    }catch(err){ console.error(err); toast('Toggle failed'); }
-    finally{ btn.disabled = false; }
+    const toggleBtn = e.target.closest('button[data-action="toggle"]');
+    const deleteBtn = e.target.closest('button[data-action="delete"]');
+    const editBtn = e.target.closest('button[data-action="edit"]');
+    
+    if(toggleBtn){
+      toggleBtn.disabled = true;
+      try{
+        await patch(`${state.apiBase}/marketplace/admin/products/${toggleBtn.dataset.id}/toggle/`, {});
+        toast('Product status updated');
+        await loadProducts();
+      }catch(err){ console.error(err); toast('Toggle failed'); }
+      finally{ toggleBtn.disabled = false; }
+    }
+    else if(deleteBtn){
+      if(!confirm('Are you sure you want to delete this product? This action cannot be undone.')) return;
+      deleteBtn.disabled = true;
+      try{
+        await fetch(`${state.apiBase}/marketplace/admin/products/${deleteBtn.dataset.id}/delete/`, {
+          method: 'DELETE',
+          headers: authHeaders({})
+        });
+        toast('Product deleted successfully');
+        await loadProducts();
+      }catch(err){ console.error(err); toast('Delete failed'); }
+      finally{ deleteBtn.disabled = false; }
+    }
+    else if(editBtn){
+      const productId = editBtn.dataset.id;
+      const products = await get(`${state.apiBase}/marketplace/admin/products/`);
+      const product = products.find(p => p.id == productId);
+      if(!product) { toast('Product not found'); return; }
+      
+      const newTitle = prompt('Edit product title:', product.title);
+      if(newTitle === null) return;
+      
+      const newPrice = prompt('Edit price (PKR):', product.price_pkr);
+      if(newPrice === null) return;
+      
+      const newDesc = prompt('Edit description:', product.description);
+      if(newDesc === null) return;
+      
+      editBtn.disabled = true;
+      try{
+        await patch(`${state.apiBase}/marketplace/admin/products/${productId}/`, {
+          title: newTitle.trim(),
+          price_pkr: parseFloat(newPrice),
+          description: newDesc.trim()
+        });
+        toast('Product updated successfully');
+        await loadProducts();
+      }catch(err){ console.error(err); toast('Edit failed'); }
+      finally{ editBtn.disabled = false; }
+    }
   });
 
   // Orders handlers
