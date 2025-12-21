@@ -213,7 +213,22 @@
   
   const handleApiError = (error, context = '') => {
     console.error(`❌ API Error in ${context}:`, error.message);
-    toast(`Error in ${context}: ${error.message}`);
+    
+    let displayMsg = error.message;
+    if (displayMsg.length > 100) {
+      displayMsg = displayMsg.substring(0, 100) + '...';
+    }
+    
+    toast(`❌ ${displayMsg}`);
+    
+    if (error.message.includes('Authentication failed') || error.message.includes('session may have expired')) {
+      console.warn('🔄 Attempting token refresh due to authentication error...');
+      setTimeout(() => {
+        if (typeof validateStoredTokens === 'function') {
+          validateStoredTokens();
+        }
+      }, 500);
+    }
   };
   
   const setAuthStatus = (isAuthenticated, message = '') => {
@@ -253,7 +268,24 @@
       // If it's not JSON, get the text and throw an error
       const text = await response.text();
       if (text.includes('<!DOCTYPE') || text.includes('<html>')) {
-        throw new Error('Server returned HTML instead of JSON. This usually indicates an authentication or server error.');
+        console.error('Server returned HTML error page:');
+        console.error('Response status:', response.status);
+        console.error('Response text (first 500 chars):', text.substring(0, 500));
+        
+        let errorMsg = 'Server returned HTML instead of JSON.';
+        if (response.status === 401 || response.status === 403) {
+          errorMsg = 'Authentication failed. Your session may have expired. Please login again.';
+        } else if (response.status === 404) {
+          errorMsg = 'API endpoint not found. Please check the server configuration.';
+        } else if (response.status === 500) {
+          errorMsg = 'Server error (500). The backend may be experiencing issues.';
+        } else if (response.status === 502 || response.status === 503) {
+          errorMsg = 'Server temporarily unavailable. Please try again in a moment.';
+        } else {
+          errorMsg = `Server error (HTTP ${response.status}). This usually indicates an authentication or server issue.`;
+        }
+        
+        throw new Error(errorMsg);
       }
       throw new Error(`Expected JSON response but got: ${contentType || 'unknown content type'}`);
     }
@@ -283,6 +315,7 @@
     
     console.log('📡 Response status:', res.status);
     console.log('📡 Response headers:', Object.fromEntries(res.headers.entries()));
+    console.log('📡 Content-Type:', res.headers.get('content-type'));
     
     setStatus('');
     if (res.status === 401 && state.refresh) {
@@ -299,8 +332,8 @@
           method: 'GET'
         });
         if(!retry.ok) {
-          const errorText = await retry.text();
-          throw new Error(`HTTP ${retry.status}: ${errorText}`);
+          console.error('❌ Retry failed with status:', retry.status);
+          return await parseJsonSafely(retry);
         }
         return await parseJsonSafely(retry);
       } else {
@@ -309,9 +342,8 @@
       }
     }
     if (!res.ok) {
-      const errorText = await res.text();
-      console.log('❌ Request failed:', res.status, errorText);
-      throw new Error(`HTTP ${res.status}: ${errorText}`);
+      console.error('❌ Request failed with status:', res.status);
+      return await parseJsonSafely(res);
     }
     return await parseJsonSafely(res);
   };
@@ -326,9 +358,14 @@
       body: JSON.stringify(body||{})
     });
     setStatus('');
+    console.log('📡 POST Response status:', res.status);
+    console.log('📡 Content-Type:', res.headers.get('content-type'));
+    
     if (res.status === 401 && state.refresh) {
+      console.log('🔄 POST: Attempting token refresh...');
       const refreshSuccess = await refreshToken();
       if (refreshSuccess) {
+        console.log('✅ POST: Token refresh successful, retrying...');
         const retryCreds = state.access ? 'omit' : 'include';
         const retry = await fetch(url, {
           method: 'POST',
@@ -337,8 +374,8 @@
           body: JSON.stringify(body||{})
         });
         if(!retry.ok) {
-          const errorText = await retry.text();
-          throw new Error(`HTTP ${retry.status}: ${errorText}`);
+          console.error('❌ POST Retry failed with status:', retry.status);
+          return await parseJsonSafely(retry);
         }
         return await parseJsonSafely(retry);
       } else {
@@ -346,8 +383,8 @@
       }
     }
     if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`HTTP ${res.status}: ${errorText}`);
+      console.error('❌ POST failed with status:', res.status);
+      return await parseJsonSafely(res);
     }
     return await parseJsonSafely(res);
   };
@@ -362,9 +399,14 @@
       body: JSON.stringify(body||{})
     });
     setStatus('');
+    console.log('📡 PATCH Response status:', res.status);
+    console.log('📡 Content-Type:', res.headers.get('content-type'));
+    
     if (res.status === 401 && state.refresh) {
+      console.log('🔄 PATCH: Attempting token refresh...');
       const refreshSuccess = await refreshToken();
       if (refreshSuccess) {
+        console.log('✅ PATCH: Token refresh successful, retrying...');
         const retryCreds = state.access ? 'omit' : 'include';
         const retry = await fetch(url, {
           method: 'PATCH',
@@ -373,8 +415,8 @@
           body: JSON.stringify(body||{})
         });
         if(!retry.ok) {
-          const errorText = await retry.text();
-          throw new Error(`HTTP ${retry.status}: ${errorText}`);
+          console.error('❌ PATCH Retry failed with status:', retry.status);
+          return await parseJsonSafely(retry);
         }
         return await parseJsonSafely(retry);
       } else {
@@ -382,8 +424,8 @@
       }
     }
     if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`HTTP ${res.status}: ${errorText}`);
+      console.error('❌ PATCH failed with status:', res.status);
+      return await parseJsonSafely(res);
     }
     return await parseJsonSafely(res);
   };
@@ -828,7 +870,9 @@
     const tbody = $('#depositsTbody');
     tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
     try{
+      console.log('🔄 Loading deposits from:', `${state.apiBase}/wallets/admin/deposits/pending/`);
       const rows = await get(`${state.apiBase}/wallets/admin/deposits/pending/`);
+      console.log('✅ Deposits data loaded:', rows);
       if(!rows.length){ tbody.innerHTML = '<tr><td colspan="6" class="muted">No pending</td></tr>'; return; }
       tbody.innerHTML = '';
       rows.forEach(d=>{
@@ -851,7 +895,17 @@
         `;
         tbody.appendChild(tr);
       });
-    }catch(e){ console.error(e); tbody.innerHTML = '<tr><td colspan="6" class="muted">Failed to load</td></tr>'; }
+    }catch(e){ 
+      console.error('❌ loadDeposits error:', e); 
+      handleApiError(e, 'deposits');
+      let errorHtml = `<tr><td colspan="6" class="muted">❌ Failed to load</td></tr>`;
+      if (e.message.includes('Authentication')) {
+        errorHtml = `<tr><td colspan="6" class="muted">❌ Not authenticated - use quickLogin()</td></tr>`;
+      } else if (e.message.includes('endpoint not found')) {
+        errorHtml = `<tr><td colspan="6" class="muted">❌ API endpoint not found</td></tr>`;
+      }
+      tbody.innerHTML = errorHtml; 
+    }
   }
 
   $('#depositsTbody').addEventListener('click', async (e)=>{
@@ -1099,8 +1153,9 @@
     const tbody = $('#withdrawalsTbody');
     tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
     try{
+      console.log('🔄 Loading withdrawals from:', `${state.apiBase}/withdrawals/admin/pending/`);
       const rows = await get(`${state.apiBase}/withdrawals/admin/pending/`);
-      console.log('Withdrawals data loaded:', rows);
+      console.log('✅ Withdrawals data loaded:', rows);
       if(!rows.length){ 
         tbody.innerHTML = '<tr><td colspan="9" class="muted">No pending withdrawals</td></tr>'; 
         return; 
@@ -1128,9 +1183,15 @@
         tbody.appendChild(tr);
       });
     }catch(e){ 
-      console.error('loadWithdrawals error:', e); 
-      handleApiError(e, `${state.apiBase}/withdrawals/admin/pending/`);
-      tbody.innerHTML = '<tr><td colspan="9" class="muted">❌ Failed to load - Check connection</td></tr>'; 
+      console.error('❌ loadWithdrawals error:', e); 
+      handleApiError(e, 'withdrawals');
+      let errorHtml = `<tr><td colspan="9" class="muted">❌ Failed to load</td></tr>`;
+      if (e.message.includes('Authentication')) {
+        errorHtml = `<tr><td colspan="9" class="muted">❌ Not authenticated - use quickLogin()</td></tr>`;
+      } else if (e.message.includes('endpoint not found')) {
+        errorHtml = `<tr><td colspan="9" class="muted">❌ API endpoint not found</td></tr>`;
+      }
+      tbody.innerHTML = errorHtml; 
     }
   }
 
