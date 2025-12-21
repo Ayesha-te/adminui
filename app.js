@@ -1278,4 +1278,42 @@
 
   // Initial loads - REMOVED: These will be called after authentication is confirmed
   // The authentication flow will trigger these loads after successful login/token validation
+  
+  // Auto-initialization: Try to use stored tokens or auto-login
+  (async () => {
+    console.log('🚀 Admin UI initializing...');
+    try {
+      if (state.access) {
+        console.log('📌 Found stored access token, validating...');
+        const isValid = await validateStoredTokens();
+        if (isValid) {
+          console.log('✅ Stored tokens are valid');
+          updateLoginUI();
+          setTimeout(() => loadAllDashboardData(), 500);
+        } else {
+          console.log('⚠️ Stored tokens invalid, attempting auto-login...');
+          await login('Ahmad', '12345');
+          updateLoginUI();
+          setTimeout(() => loadAllDashboardData(), 500);
+        }
+      } else {
+        console.log('❌ No stored tokens, attempting auto-login with default credentials...');
+        try {
+          await login('Ahmad', '12345');
+          updateLoginUI();
+          setTimeout(() => loadAllDashboardData(), 500);
+        } catch (e) {
+          console.log('⚠️ Auto-login failed, waiting for manual login:', e.message);
+          setAuthStatus(false, 'Please login to continue');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Initialization error:', error);
+    }
+  })();
+  
+  function updateLoginUI() {
+    const loginBtn = $('#loginBtn');
+    if (loginBtn) loginBtn.textContent = 'Logout';
+  }
 })();
