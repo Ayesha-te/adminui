@@ -1116,7 +1116,7 @@
           <td>${escapeHtml(w.tx_id || '-')}</td>
           <td>${escapeHtml(w.bank_name || '-')}</td>
           <td>${escapeHtml(w.account_name || '-')}</td>
-          <td>${escapeHtml(accountNumber)}</td> <!-- Account Number column added here -->
+          <td>${escapeHtml(w.account_number || '-')}</td>
           <td>${formatUsdToPkr(w.amount_usd||0)}</td>
           <td>${escapeHtml(w.created_at || '-')}</td>
           <td>
