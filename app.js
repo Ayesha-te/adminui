@@ -937,6 +937,8 @@
           <td>${imgHtml}</td>
           <td>${escapeHtml(p.title)}</td>
           <td>${formatPkr(p.price_pkr)}</td>
+          <td>${formatPkr(p.advance_payment_discount)}</td>
+          <td>${formatPkr(p.delivery_charges)}</td>
           <td>${escapeHtml(p.description||'')}</td>
           <td>${p.is_active ? 'Yes' : 'No'}</td>
           <td>
@@ -1047,18 +1049,33 @@
     try{
       const title = ($('#newProductName')?.value||'').trim();
       const price = Number($('#newProductPrice')?.value||'');
+      const advanceDiscount = Number($('#newProductAdvanceDiscount')?.value||'0');
+      const deliveryCharges = Number($('#newProductDeliveryCharges')?.value||'0');
       const description = ($('#newProductDesc')?.value||'').trim();
-      const imageFile = $('#newProductImage')?.files?.[0] || null;
+      const imageFiles = $('#newProductImage')?.files || [];
+      const videoFile = $('#newProductVideo')?.files?.[0] || null;
       if(!title){ toast('Title is required'); return; }
       if(!description){ toast('Description is required'); return; }
       if(!(price>0)){ toast('Valid price (PKR) is required'); return; }
   const fd = new FormData();
       fd.append('title', title);
       fd.append('price_pkr', String(price));
+      fd.append('advance_payment_discount', String(advanceDiscount));
+      fd.append('delivery_charges', String(deliveryCharges));
       fd.append('description', description);
   const categoryId = $('#newProductCategory')?.value || '';
   if(categoryId) fd.append('category', categoryId);
-      if(imageFile){ fd.append('image_file', imageFile); }
+      
+      // Use the first image as the main image (legacy support)
+      if(imageFiles.length > 0){ 
+        fd.append('image_file', imageFiles[0]); 
+        // Also append all images to image_files for the gallery
+        for(let i=0; i<imageFiles.length; i++) {
+          fd.append('image_files', imageFiles[i]);
+        }
+      }
+      
+      if(videoFile){ fd.append('video_file', videoFile); }
       setStatus('Working...');
       const headers = { ...authHeaders({}) };
       delete headers['Content-Type'];
@@ -1071,7 +1088,8 @@
       setStatus('');
       if(!res.ok){ throw new Error(await res.text()); }
       toast('Product added');
-      $('#newProductName').value=''; $('#newProductPrice').value=''; $('#newProductDesc').value=''; if($('#newProductImage')) $('#newProductImage').value='';
+      $('#newProductName').value=''; $('#newProductPrice').value=''; $('#newProductAdvanceDiscount').value=''; $('#newProductDeliveryCharges').value=''; $('#newProductDesc').value=''; if($('#newProductImage')) $('#newProductImage').value='';
+      if($('#newProductVideo')) $('#newProductVideo').value='';
   if($('#newProductCategory')) $('#newProductCategory').value = '';
       await loadProducts();
     }catch(e){ console.error(e); toast('Add failed'); }
@@ -1117,6 +1135,12 @@
       const newPrice = prompt('Edit price (PKR):', product.price_pkr);
       if(newPrice === null) return;
       
+      const newAdvDiscount = prompt('Edit advance payment discount (PKR):', product.advance_payment_discount);
+      if(newAdvDiscount === null) return;
+
+      const newDelivery = prompt('Edit delivery charges (PKR):', product.delivery_charges);
+      if(newDelivery === null) return;
+      
       const newDesc = prompt('Edit description:', product.description);
       if(newDesc === null) return;
       
@@ -1125,6 +1149,8 @@
         await patch(`${state.apiBase}/marketplace/admin/products/${productId}/`, {
           title: newTitle.trim(),
           price_pkr: parseFloat(newPrice),
+          advance_payment_discount: parseFloat(newAdvDiscount),
+          delivery_charges: parseFloat(newDelivery),
           description: newDesc.trim()
         });
         toast('Product updated successfully');

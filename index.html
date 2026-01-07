@@ -323,11 +323,20 @@
       <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:flex-start;">
         <input id="newProductName" placeholder="Product name" style="min-width:200px;"/>
         <input id="newProductPrice" type="number" step="0.01" placeholder="Price" style="width:140px;"/>
+        <input id="newProductAdvanceDiscount" type="number" step="0.01" placeholder="Advance Discount" style="width:140px;"/>
+        <input id="newProductDeliveryCharges" type="number" step="0.01" placeholder="Delivery Charges" style="width:140px;"/>
         <select id="newProductCategory" style="width:220px">
           <option value="">No category</option>
         </select>
         <input id="newProductDesc" placeholder="Description" style="min-width:280px;flex:1;"/>
-        <input id="newProductImage" type="file" accept="image/*" style="max-width:220px;"/>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:10px;color:#666">Gallery Images</label>
+          <input id="newProductImage" type="file" accept="image/*" multiple style="max-width:220px;"/>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:10px;color:#666">Product Video</label>
+          <input id="newProductVideo" type="file" accept="video/*" style="max-width:220px;"/>
+        </div>
         <button id="addProductBtn" class="btn">Add</button>
       </div>
       <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:8px;">
@@ -353,7 +362,7 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Image</th><th>Title</th><th>Price (PKR)</th><th>Description</th><th>Active</th><th>Actions</th></tr>
+            <tr><th>Image</th><th>Title</th><th>Price (PKR)</th><th>Adv Discount (PKR)</th><th>Delivery (PKR)</th><th>Description</th><th>Active</th><th>Actions</th></tr>
           </thead>
           <tbody id="productsTbody"></tbody>
         </table>
