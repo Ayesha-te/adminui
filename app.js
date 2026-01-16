@@ -580,7 +580,7 @@
       $$('.section').forEach(s => s.classList.remove('active'));
       $('#'+id).classList.add('active');
       // Auto-load when switching sections (only if logged in when admin endpoints)
-      if(id==='users'){ loadUsers(); }
+      if(id==='users'){ loadUsers(); loadPendingUsers(); }
       if(id==='dashboard'){ loadDashboard(); }
       if(id==='deposits'){ if(state.access) loadDeposits(); else setStatus('Login required'); }
       if(id==='withdrawals'){ if(state.access) loadWithdrawals(); else setStatus('Login required'); }
@@ -795,11 +795,11 @@
   // Users (pending) list and actions
   async function loadPendingUsers(){
     const tbody = $('#pendingUsersTbody');
-    tbody.innerHTML = '<tr><td colspan="4" class="muted">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
     try{
       const rows = await get(`${state.apiBase}/accounts/admin/pending-users/`);
       if(!rows.length){
-        tbody.innerHTML = '<tr><td colspan="4" class="muted">No pending users</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="muted">No pending users</td></tr>';
         return;
       }
       tbody.innerHTML = '';
@@ -856,6 +856,7 @@
         toast('User rejected');
       }
       await loadPendingUsers();
+      await loadUsers();
       await loadDashboard();
     }catch(err){ 
       console.error('Pending user action error:', err); 
@@ -1356,8 +1357,15 @@
 
 
 
+  const approveUsersBtn = $('#approveUsersBtn');
+  if (approveUsersBtn) {
+    approveUsersBtn.addEventListener('click', () => {
+      const usersBtn = $$('.nav-btn').find(b => b.dataset.section === 'users');
+      if (usersBtn) usersBtn.click();
+    });
+  }
+
   // Bind refresh buttons
-  $('#refreshUsers').addEventListener('click', loadPendingUsers);
   $('#refreshDeposits').addEventListener('click', loadDeposits);
   $('#refreshWithdrawals').addEventListener('click', loadWithdrawals);
   $('#refreshReferrals').addEventListener('click', loadReferrals);
