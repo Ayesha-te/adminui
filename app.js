@@ -267,12 +267,14 @@
     } else {
       // If it's not JSON, get the text and throw an error
       const text = await response.text();
+      console.error('Server returned non-JSON response:');
+      console.error('URL:', response.url);
+      console.error('Status:', response.status);
+      console.error('Content-Type:', contentType);
+      console.error('Response text (first 500 chars):', text.substring(0, 500));
+
       if (text.includes('<!DOCTYPE') || text.includes('<html>')) {
-        console.error('Server returned HTML error page:');
-        console.error('Response status:', response.status);
-        console.error('Response text (first 500 chars):', text.substring(0, 500));
-        
-        let errorMsg = 'Server returned HTML instead of JSON.';
+        let errorMsg = 'Server returned HTML error page.';
         if (response.status === 401 || response.status === 403) {
           errorMsg = 'Authentication failed. Your session may have expired. Please login again.';
         } else if (response.status === 404) {
@@ -284,10 +286,9 @@
         } else {
           errorMsg = `Server error (HTTP ${response.status}). This usually indicates an authentication or server issue.`;
         }
-        
         throw new Error(errorMsg);
       }
-      throw new Error(`Expected JSON response but got: ${contentType || 'unknown content type'}`);
+      throw new Error(`Expected JSON response but got: ${contentType || 'unknown content type'} (HTTP ${response.status})`);
     }
   };
 
@@ -850,8 +851,7 @@
           await post(`${state.apiBase}/accounts/admin/signup-proof/action/${proofId}/`, { action: 'REJECT' });
         } else {
           console.log('No proofId available; falling back to user reject:', id);
-          const response = await post(`${state.apiBase}/accounts/admin/reject/${id}/`);
-          console.log('Reject response (fallback):', response);
+          await post(`${state.apiBase}/accounts/admin/reject/${id}/`);
         }
         toast('User rejected');
       }
